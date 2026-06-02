@@ -163,7 +163,10 @@ function buildCustomInstruction(customInstruction) {
 1. \u4E0D\u8F93\u51FA bash\u3002
 2. \u4E0D\u8F93\u51FA shell \u6216\u7EC8\u7AEF\u547D\u4EE4\u3002
 3. \u4E0D\u89E3\u91CA\u8FC7\u7A0B\u3002
-4. \u53EA\u8F93\u51FA\u6700\u7EC8 Markdown\u3002`;
+4. \u53EA\u8F93\u51FA\u6700\u7EC8 Markdown\u3002
+5. \u76F4\u63A5\u8F93\u51FA Markdown \u6B63\u6587\u672C\u8EAB\uFF0C\u4E0D\u8981\u7528 \`\`\` \u6216 \`\`\`markdown \u4EE3\u7801\u5757\u628A\u6574\u4F53\u7ED3\u679C\u5305\u88F9\u8D77\u6765\u3002
+6. \u4E0D\u8981\u5728\u5F00\u5934\u6216\u7ED3\u5C3E\u6DFB\u52A0\u4EFB\u4F55\u8BF4\u660E\u3001\u524D\u8A00\u3001\u603B\u7ED3\u6216\u5BA2\u5957\u8BDD\u3002
+7. \u8F93\u51FA\u7684\u7B2C\u4E00\u4E2A\u5B57\u7B26\u5C31\u662F\u6B63\u6587\u7684\u7B2C\u4E00\u4E2A\u5B57\u7B26\u3002`;
 }
 
 // src/api.ts
@@ -198,7 +201,7 @@ async function callChatCompletions(settings, promptOptions) {
     if (!content || typeof content !== "string") {
       throw new Error("API returned an unexpected response format: missing choices[0].message.content.");
     }
-    return content.trim();
+    return stripCodeFence(content);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
@@ -222,6 +225,15 @@ function parseJsonResponse(text) {
   } catch (e) {
     throw new Error("API returned invalid JSON.");
   }
+}
+function stripCodeFence(text) {
+  let cleaned = text.trim();
+  const fenceStart = /^```[a-zA-Z]*\n/;
+  const fenceEnd = /\n```$/;
+  if (fenceStart.test(cleaned) && fenceEnd.test(cleaned)) {
+    cleaned = cleaned.replace(fenceStart, "").replace(fenceEnd, "");
+  }
+  return cleaned.trim();
 }
 function statusToMessage(status, data) {
   var _a;
@@ -360,7 +372,10 @@ var DEFAULT_SYSTEM_PROMPT = `\u4F60\u662F Obsidian Markdown \u7B14\u8BB0\u6574\u
 6. \u4FDD\u6301 Obsidian wikilink\u3001tag\u3001callout\u3001frontmatter \u517C\u5BB9\u3002
 7. \u516C\u5F0F\u5728 Markdown \u4E2D\u4F7F\u7528 $...$ \u6216 $$...$$\u3002
 8. \u9ED8\u8BA4\u4E2D\u6587\u8F93\u51FA\u3002
-9. \u5982\u679C\u8F93\u5165\u5185\u5BB9\u660E\u663E\u4E0D\u8DB3\uFF0C\u53EA\u505A\u683C\u5F0F\u6574\u7406\uFF0C\u4E0D\u8865\u9020\u5185\u5BB9\u3002`;
+9. \u5982\u679C\u8F93\u5165\u5185\u5BB9\u660E\u663E\u4E0D\u8DB3\uFF0C\u53EA\u505A\u683C\u5F0F\u6574\u7406\uFF0C\u4E0D\u8865\u9020\u5185\u5BB9\u3002
+10. \u76F4\u63A5\u8F93\u51FA Markdown \u6B63\u6587\u672C\u8EAB\uFF0C\u4E0D\u8981\u7528 \`\`\` \u6216 \`\`\`markdown \u4EE3\u7801\u5757\u628A\u6574\u4F53\u7ED3\u679C\u5305\u88F9\u8D77\u6765\u3002
+11. \u4E0D\u8981\u5728\u5F00\u5934\u6216\u7ED3\u5C3E\u6DFB\u52A0\u4EFB\u4F55\u8BF4\u660E\u3001\u524D\u8A00\u3001\u603B\u7ED3\u6216\u5BA2\u5957\u8BDD\u3002
+12. \u8F93\u51FA\u7684\u7B2C\u4E00\u4E2A\u5B57\u7B26\u5C31\u662F\u6B63\u6587\u7684\u7B2C\u4E00\u4E2A\u5B57\u7B26\u3002`;
 var DEFAULT_SETTINGS = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "",

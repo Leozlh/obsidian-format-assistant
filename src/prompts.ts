@@ -150,5 +150,8 @@ function buildCustomInstruction(customInstruction?: string): string {
 1. 不输出 bash。
 2. 不输出 shell 或终端命令。
 3. 不解释过程。
-4. 只输出最终 Markdown。`;
+4. 只输出最终 Markdown。
+5. 直接输出 Markdown 正文本身，不要用 \`\`\` 或 \`\`\`markdown 代码块把整体结果包裹起来。
+6. 不要在开头或结尾添加任何说明、前言、总结或客套话。
+7. 输出的第一个字符就是正文的第一个字符。`;
 }

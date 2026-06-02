@@ -51,7 +51,7 @@ export async function callChatCompletions(
 			throw new Error("API returned an unexpected response format: missing choices[0].message.content.");
 		}
 
-		return content.trim();
+		return stripCodeFence(content);
 	} catch (error) {
 		if (error instanceof DOMException && error.name === "AbortError") {
 			throw new Error(
@@ -79,6 +79,18 @@ function parseJsonResponse(text: string): ChatCompletionResponse {
 	} catch {
 		throw new Error("API returned invalid JSON.");
 	}
+}
+
+function stripCodeFence(text: string): string {
+	let cleaned = text.trim();
+	const fenceStart = /^```[a-zA-Z]*\n/;
+	const fenceEnd = /\n```$/;
+
+	if (fenceStart.test(cleaned) && fenceEnd.test(cleaned)) {
+		cleaned = cleaned.replace(fenceStart, "").replace(fenceEnd, "");
+	}
+
+	return cleaned.trim();
 }
 
 function statusToMessage(status: number, data: ChatCompletionResponse): string {
