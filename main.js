@@ -763,8 +763,7 @@ var FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 var SIDEBAR_MODES = [
   "obsidian-markdown",
   "note-organize",
-  "diary-organize",
-  "custom"
+  "diary-organize"
 ];
 var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {

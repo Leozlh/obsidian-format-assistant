@@ -35,8 +35,7 @@ type SidebarInputSource = "selection" | "manual";
 const SIDEBAR_MODES: FormatMode[] = [
 	"obsidian-markdown",
 	"note-organize",
-	"diary-organize",
-	"custom"
+	"diary-organize"
 ];
 
 interface GenerateInput {
