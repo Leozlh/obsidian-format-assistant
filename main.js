@@ -171,8 +171,8 @@ var WIKI_CANDIDATES_PROMPT = "\u63D0\u53D6 Wiki \u5019\u9009\u6761\u76EE\uFF1A\n
 var CONCISE_PROMPT = "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u7CBE\u7B80\u4E3A\u66F4\u77ED\u3001\u66F4\u6E05\u695A\u7684 Markdown\uFF0C\u4E0D\u4E22\u5931\u6838\u5FC3\u516C\u5F0F\u3001\u9002\u7528\u6761\u4EF6\u3001\u5B9A\u4E49\u3001\u9650\u5236\u548C\u5173\u952E\u7ED3\u8BBA\u3002";
 var FORMAT_MODE_LABELS = {
   "obsidian-markdown": "Obsidian Markdown",
-  "note-organize": "\u7B14\u8BB0\u6574\u7406",
-  "diary-organize": "\u65E5\u8BB0\u6574\u7406",
+  "note-organize": "Note Organize",
+  "diary-organize": "Diary Organize",
   "course-note": "Course Note",
   "review-card": "Review Card",
   "wiki-candidates": "Wiki Candidates",
@@ -1021,7 +1021,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.customInputEl = panel.createEl("textarea", {
       cls: "format-assistant-textarea",
       attr: {
-        placeholder: "\u8F93\u5165\u4F60\u5E0C\u671B\u5982\u4F55\u6574\u7406\u5F53\u524D\u9009\u4E2D\u6587\u672C\uFF0C\u4F8B\u5982\uFF1A\u6574\u7406\u4E3A\u66F4\u6E05\u695A\u7684\u8BFE\u7A0B\u7B14\u8BB0\uFF0C\u4E0D\u8981\u6269\u5199\u3002"
+        placeholder: "Add temporary instructions, for example: keep it concise, preserve the original tone, or organize it as a clearer course note."
       }
     });
     this.customInputEl.value = this.customInstruction;
@@ -1248,7 +1248,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     new ConfirmModal(this.app, {
-      message: "\u786E\u8BA4\u7528\u751F\u6210\u7ED3\u679C\u66FF\u6362\u5F53\u524D\u9009\u533A\u5417\uFF1F",
+      message: "Replace the current selection with the generated result?",
       confirmText: "Replace selection",
       onConfirm: () => this.replaceSelection()
     }).open();
@@ -1263,7 +1263,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     new ConfirmModal(this.app, {
-      message: "\u786E\u8BA4\u5C06\u751F\u6210\u7ED3\u679C\u63D2\u5165\u5230\u5F53\u524D\u9009\u533A\u4E4B\u540E\u5417\uFF1F",
+      message: "Insert the generated result below the current selection?",
       confirmText: "Insert below selection",
       onConfirm: () => this.insertBelowSelection()
     }).open();
@@ -1342,9 +1342,9 @@ ${this.outputText}`,
     if (!(info == null ? void 0 : info.editor)) {
       this.currentSelection = null;
       this.selectionContext = null;
-      this.setError("\u8BF7\u5148\u5207\u6362\u5230 Markdown \u7F16\u8F91\u5668");
+      this.setError("Switch to a Markdown editor first.");
       if (showNotice) {
-        new import_obsidian3.Notice("\u8BF7\u5148\u5207\u6362\u5230 Markdown \u7F16\u8F91\u5668");
+        new import_obsidian3.Notice("Switch to a Markdown editor first.");
       }
       return false;
     }
@@ -1352,11 +1352,11 @@ ${this.outputText}`,
     this.currentSelection = preview;
     if (!preview.text.trim()) {
       this.selectionContext = null;
-      this.statusText = "\u8BF7\u5148\u9009\u62E9\u6587\u672C";
+      this.statusText = "Select text first.";
       this.errorText = "";
       this.render();
       if (showNotice) {
-        new import_obsidian3.Notice("\u8BF7\u5148\u9009\u4E2D\u6587\u672C");
+        new import_obsidian3.Notice("Select text first.");
       }
       return false;
     }
@@ -1686,8 +1686,8 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     }
     await callChatCompletions(this.settings, {
       mode: "custom",
-      selectedText: "\u8FDE\u63A5\u6D4B\u8BD5\u3002\u8BF7\u53EA\u56DE\u590D OK\u3002",
-      customInstruction: "\u8BF7\u53EA\u56DE\u590D\uFF1AOK"
+      selectedText: "Connection test. Reply with OK only.",
+      customInstruction: "Reply with OK only."
     });
   }
   toUserError(error) {

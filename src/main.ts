@@ -219,8 +219,8 @@ export default class FormatAssistantPlugin extends Plugin {
 
 		await callChatCompletions(this.settings, {
 			mode: "custom",
-			selectedText: "连接测试。请只回复 OK。",
-			customInstruction: "请只回复：OK"
+			selectedText: "Connection test. Reply with OK only.",
+			customInstruction: "Reply with OK only."
 		});
 	}
 

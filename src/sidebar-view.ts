@@ -345,7 +345,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.customInputEl = panel.createEl("textarea", {
 			cls: "format-assistant-textarea",
 			attr: {
-				placeholder: "输入你希望如何整理当前选中文本，例如：整理为更清楚的课程笔记，不要扩写。"
+				placeholder: "Add temporary instructions, for example: keep it concise, preserve the original tone, or organize it as a clearer course note."
 			}
 		});
 		this.customInputEl.value = this.customInstruction;
@@ -609,7 +609,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		new ConfirmModal(this.app, {
-			message: "确认用生成结果替换当前选区吗？",
+			message: "Replace the current selection with the generated result?",
 			confirmText: "Replace selection",
 			onConfirm: () => this.replaceSelection()
 		}).open();
@@ -627,7 +627,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		new ConfirmModal(this.app, {
-			message: "确认将生成结果插入到当前选区之后吗？",
+			message: "Insert the generated result below the current selection?",
 			confirmText: "Insert below selection",
 			onConfirm: () => this.insertBelowSelection()
 		}).open();
@@ -723,9 +723,9 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!info?.editor) {
 			this.currentSelection = null;
 			this.selectionContext = null;
-			this.setError("请先切换到 Markdown 编辑器");
+			this.setError("Switch to a Markdown editor first.");
 			if (showNotice) {
-				new Notice("请先切换到 Markdown 编辑器");
+				new Notice("Switch to a Markdown editor first.");
 			}
 			return false;
 		}
@@ -735,11 +735,11 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		if (!preview.text.trim()) {
 			this.selectionContext = null;
-			this.statusText = "请先选择文本";
+			this.statusText = "Select text first.";
 			this.errorText = "";
 			this.render();
 			if (showNotice) {
-				new Notice("请先选中文本");
+				new Notice("Select text first.");
 			}
 			return false;
 		}

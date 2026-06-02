@@ -150,8 +150,8 @@ export const FORMAT_MODES: FormatMode[] = [
 
 export const FORMAT_MODE_LABELS: Record<FormatMode, string> = {
 	"obsidian-markdown": "Obsidian Markdown",
-	"note-organize": "笔记整理",
-	"diary-organize": "日记整理",
+	"note-organize": "Note Organize",
+	"diary-organize": "Diary Organize",
 	"course-note": "Course Note",
 	"review-card": "Review Card",
 	"wiki-candidates": "Wiki Candidates",
