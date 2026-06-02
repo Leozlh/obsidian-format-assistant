@@ -6,6 +6,7 @@ import {
 	Plugin,
 	WorkspaceLeaf
 } from "obsidian";
+import { applyApiProfile, type ApiProfile } from "./api-profiles";
 import { callChatCompletions } from "./api";
 import { FORMAT_TASKS, type FormatMode } from "./prompts";
 import { PreviewModal } from "./preview-modal";
@@ -113,6 +114,13 @@ export default class FormatAssistantPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	async applyApiProfile(profile: ApiProfile): Promise<void> {
+		applyApiProfile(this.settings, profile);
+		await this.saveSettings();
+		this.refreshSidebarViews();
+		new Notice(`API profile switched: ${profile.name}`);
 	}
 
 	async openSidebar(): Promise<FormatAssistantSidebarView | null> {

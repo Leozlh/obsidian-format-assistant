@@ -84,6 +84,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		root.addClass("format-assistant-sidebar");
 
 		this.renderHeader(root);
+		this.renderApiProfileSelector(root);
 		this.renderContextPreview(root);
 		this.renderModeSelector(root);
 		this.renderInput(root);
@@ -163,6 +164,37 @@ export class FormatAssistantSidebarView extends ItemView {
 			cls: "format-assistant-small-button"
 		});
 		settingsButton.addEventListener("click", () => this.openSettings());
+	}
+
+	private renderApiProfileSelector(root: HTMLElement): void {
+		const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-api-profile" });
+		const header = panel.createDiv({ cls: "format-assistant-section-header" });
+		header.createEl("h3", { text: "API" });
+		header.createSpan({
+			cls: "format-assistant-muted",
+			text: this.plugin.settings.apiProfiles.length
+				? "Select profile"
+				: "No profiles"
+		});
+
+		const select = panel.createEl("select", { cls: "format-assistant-select" });
+		select.createEl("option", {
+			text: "Manual current settings",
+			value: ""
+		});
+
+		for (const profile of this.plugin.settings.apiProfiles) {
+			const option = select.createEl("option", {
+				text: profile.name,
+				value: profile.id
+			});
+			option.selected = profile.id === this.plugin.settings.activeApiProfileId;
+		}
+
+		select.value = this.plugin.settings.activeApiProfileId;
+		select.addEventListener("change", () => {
+			void this.switchApiProfile(select.value);
+		});
 	}
 
 	private renderContextPreview(root: HTMLElement): void {
@@ -637,6 +669,25 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		appWithSettings.setting?.open();
 		appWithSettings.setting?.openTabById(this.plugin.manifest.id);
+	}
+
+	private async switchApiProfile(profileId: string): Promise<void> {
+		if (!profileId) {
+			this.plugin.settings.activeApiProfileId = "";
+			await this.plugin.saveSettings();
+			this.plugin.refreshSidebarViews();
+			new Notice("Using manual API settings.");
+			return;
+		}
+
+		const profile = this.plugin.settings.apiProfiles.find((item) => item.id === profileId);
+		if (!profile) {
+			this.setError("API profile not found.");
+			new Notice("API profile not found.");
+			return;
+		}
+
+		await this.plugin.applyApiProfile(profile);
 	}
 
 	private async addCurrentInputAsPreset(): Promise<void> {

@@ -27,6 +27,49 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian4 = require("obsidian");
 
+// src/api-profiles.ts
+var MAX_API_PROFILES = 8;
+function createApiProfileFromSettings(settings, name) {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: toProfileName(name, settings),
+    baseUrl: settings.baseUrl,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    maxTokens: settings.maxTokens,
+    temperature: settings.temperature,
+    providerType: settings.providerType,
+    timeoutSeconds: settings.timeoutSeconds
+  };
+}
+function normalizeApiProfiles(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => {
+    return Boolean(
+      item && typeof item.id === "string" && typeof item.name === "string" && typeof item.baseUrl === "string" && typeof item.apiKey === "string" && typeof item.model === "string" && typeof item.maxTokens === "number" && typeof item.temperature === "number" && item.providerType === "openai-compatible" && typeof item.timeoutSeconds === "number"
+    );
+  }).slice(0, MAX_API_PROFILES);
+}
+function applyApiProfile(settings, profile) {
+  settings.baseUrl = profile.baseUrl;
+  settings.apiKey = profile.apiKey;
+  settings.model = profile.model;
+  settings.maxTokens = profile.maxTokens;
+  settings.temperature = profile.temperature;
+  settings.providerType = profile.providerType;
+  settings.timeoutSeconds = profile.timeoutSeconds;
+  settings.activeApiProfileId = profile.id;
+}
+function toProfileName(name, settings) {
+  const normalized = name.trim();
+  if (normalized) {
+    return normalized.length > 32 ? `${normalized.slice(0, 32)}...` : normalized;
+  }
+  return settings.model.trim() || "API Profile";
+}
+
 // src/prompts.ts
 var FORMAT_MODES = [
   "obsidian-markdown",
@@ -333,14 +376,18 @@ var DEFAULT_SETTINGS = {
   autoUseSelectionOnSidebarOpen: false,
   includeCurrentFileNameInPrompt: true,
   includeFullCurrentNote: false,
-  promptPresets: []
+  promptPresets: [],
+  apiProfiles: [],
+  activeApiProfileId: ""
 };
 function normalizeSettings(data) {
   const raw = typeof data === "object" && data !== null ? data : {};
   return {
     ...DEFAULT_SETTINGS,
     ...raw,
-    promptPresets: normalizePromptPresets(raw.promptPresets)
+    promptPresets: normalizePromptPresets(raw.promptPresets),
+    apiProfiles: normalizeApiProfiles(raw.apiProfiles),
+    activeApiProfileId: typeof raw.activeApiProfileId === "string" ? raw.activeApiProfileId : ""
   };
 }
 function validateApiSettings(settings) {
@@ -370,6 +417,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Format Assistant" });
+    this.displayApiProfiles(containerEl);
     new import_obsidian2.Setting(containerEl).setName("API Base URL").setDesc("OpenAI-compatible API base URL, without /chat/completions.").addText(
       (text) => text.setPlaceholder("https://api.openai.com/v1").setValue(this.plugin.settings.baseUrl).onChange(async (value) => {
         this.plugin.settings.baseUrl = value.trim();
@@ -479,6 +527,75 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
       text: "Format Assistant only sends selected text for the command or sidebar action you run. It does not scan your vault or batch-edit notes."
     });
   }
+  displayApiProfiles(containerEl) {
+    containerEl.createEl("h3", { text: "API Profiles" });
+    new import_obsidian2.Setting(containerEl).setName("Active API profile").setDesc("Switch between saved API settings. API keys are stored in plugin data and never logged.").addDropdown((dropdown) => {
+      dropdown.addOption("", "Manual current settings");
+      for (const profile of this.plugin.settings.apiProfiles) {
+        dropdown.addOption(profile.id, profile.name);
+      }
+      dropdown.setValue(this.plugin.settings.activeApiProfileId).onChange(async (value) => {
+        if (!value) {
+          this.plugin.settings.activeApiProfileId = "";
+          await this.plugin.saveSettings();
+          this.plugin.refreshSidebarViews();
+          return;
+        }
+        const profile = this.plugin.settings.apiProfiles.find((item) => item.id === value);
+        if (!profile) {
+          new import_obsidian2.Notice("API profile not found.");
+          return;
+        }
+        await this.plugin.applyApiProfile(profile);
+        this.display();
+      });
+    });
+    new import_obsidian2.Setting(containerEl).setName("Save current API settings").setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles.`).addText((text) => {
+      text.setPlaceholder("Profile name");
+      text.inputEl.addClass("format-assistant-profile-name-input");
+    }).addButton(
+      (button) => button.setButtonText("Save").onClick(async () => {
+        var _a;
+        const input = containerEl.querySelector(
+          ".format-assistant-profile-name-input"
+        );
+        const profileName = (_a = input == null ? void 0 : input.value) != null ? _a : "";
+        if (this.plugin.settings.apiProfiles.length >= MAX_API_PROFILES) {
+          new import_obsidian2.Notice(`API profiles are limited to ${MAX_API_PROFILES}.`);
+          return;
+        }
+        const profile = createApiProfileFromSettings(
+          this.plugin.settings,
+          profileName
+        );
+        this.plugin.settings.apiProfiles = [
+          ...this.plugin.settings.apiProfiles,
+          profile
+        ];
+        this.plugin.settings.activeApiProfileId = profile.id;
+        await this.plugin.saveSettings();
+        this.plugin.refreshSidebarViews();
+        new import_obsidian2.Notice("API profile saved.");
+        this.display();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("Remove active API profile").setDesc("Removes the saved profile only. Current API fields stay unchanged.").addButton(
+      (button) => button.setButtonText("Remove").setDisabled(!this.plugin.settings.activeApiProfileId).onClick(async () => {
+        const id = this.plugin.settings.activeApiProfileId;
+        if (!id) {
+          return;
+        }
+        this.plugin.settings.apiProfiles = this.plugin.settings.apiProfiles.filter(
+          (profile) => profile.id !== id
+        );
+        this.plugin.settings.activeApiProfileId = "";
+        await this.plugin.saveSettings();
+        this.plugin.refreshSidebarViews();
+        new import_obsidian2.Notice("API profile removed.");
+        this.display();
+      })
+    );
+  }
   toNumber(value, fallback, min) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed < min) {
@@ -554,6 +671,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     root.empty();
     root.addClass("format-assistant-sidebar");
     this.renderHeader(root);
+    this.renderApiProfileSelector(root);
     this.renderContextPreview(root);
     this.renderModeSelector(root);
     this.renderInput(root);
@@ -623,6 +741,31 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       cls: "format-assistant-small-button"
     });
     settingsButton.addEventListener("click", () => this.openSettings());
+  }
+  renderApiProfileSelector(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-api-profile" });
+    const header = panel.createDiv({ cls: "format-assistant-section-header" });
+    header.createEl("h3", { text: "API" });
+    header.createSpan({
+      cls: "format-assistant-muted",
+      text: this.plugin.settings.apiProfiles.length ? "Select profile" : "No profiles"
+    });
+    const select = panel.createEl("select", { cls: "format-assistant-select" });
+    select.createEl("option", {
+      text: "Manual current settings",
+      value: ""
+    });
+    for (const profile of this.plugin.settings.apiProfiles) {
+      const option = select.createEl("option", {
+        text: profile.name,
+        value: profile.id
+      });
+      option.selected = profile.id === this.plugin.settings.activeApiProfileId;
+    }
+    select.value = this.plugin.settings.activeApiProfileId;
+    select.addEventListener("change", () => {
+      void this.switchApiProfile(select.value);
+    });
   }
   renderContextPreview(root) {
     var _a;
@@ -1022,6 +1165,22 @@ ${this.outputText}`,
     (_a = appWithSettings.setting) == null ? void 0 : _a.open();
     (_b = appWithSettings.setting) == null ? void 0 : _b.openTabById(this.plugin.manifest.id);
   }
+  async switchApiProfile(profileId) {
+    if (!profileId) {
+      this.plugin.settings.activeApiProfileId = "";
+      await this.plugin.saveSettings();
+      this.plugin.refreshSidebarViews();
+      new import_obsidian3.Notice("Using manual API settings.");
+      return;
+    }
+    const profile = this.plugin.settings.apiProfiles.find((item) => item.id === profileId);
+    if (!profile) {
+      this.setError("API profile not found.");
+      new import_obsidian3.Notice("API profile not found.");
+      return;
+    }
+    await this.plugin.applyApiProfile(profile);
+  }
   async addCurrentInputAsPreset() {
     const content = this.customInstruction.trim();
     if (!content) {
@@ -1168,6 +1327,12 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
   }
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+  async applyApiProfile(profile) {
+    applyApiProfile(this.settings, profile);
+    await this.saveSettings();
+    this.refreshSidebarViews();
+    new import_obsidian4.Notice(`API profile switched: ${profile.name}`);
   }
   async openSidebar() {
     const leaves = this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE);

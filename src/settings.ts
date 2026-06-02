@@ -1,5 +1,11 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type FormatAssistantPlugin from "./main";
+import {
+	createApiProfileFromSettings,
+	MAX_API_PROFILES,
+	normalizeApiProfiles,
+	type ApiProfile
+} from "./api-profiles";
 import { FORMAT_MODE_LABELS, FORMAT_MODES, type FormatMode } from "./prompts";
 import { normalizePromptPresets, type PromptPreset } from "./sidebar-presets";
 
@@ -20,6 +26,8 @@ export interface FormatAssistantSettings {
 	includeCurrentFileNameInPrompt: boolean;
 	includeFullCurrentNote: boolean;
 	promptPresets: PromptPreset[];
+	apiProfiles: ApiProfile[];
+	activeApiProfileId: string;
 }
 
 export const DEFAULT_SYSTEM_PROMPT = `你是 Obsidian Markdown 笔记整理助手。
@@ -48,7 +56,9 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	autoUseSelectionOnSidebarOpen: false,
 	includeCurrentFileNameInPrompt: true,
 	includeFullCurrentNote: false,
-	promptPresets: []
+	promptPresets: [],
+	apiProfiles: [],
+	activeApiProfileId: ""
 };
 
 export function normalizeSettings(data: unknown): FormatAssistantSettings {
@@ -59,7 +69,11 @@ export function normalizeSettings(data: unknown): FormatAssistantSettings {
 	return {
 		...DEFAULT_SETTINGS,
 		...raw,
-		promptPresets: normalizePromptPresets(raw.promptPresets)
+		promptPresets: normalizePromptPresets(raw.promptPresets),
+		apiProfiles: normalizeApiProfiles(raw.apiProfiles),
+		activeApiProfileId: typeof raw.activeApiProfileId === "string"
+			? raw.activeApiProfileId
+			: ""
 	};
 }
 
@@ -100,6 +114,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl("h2", { text: "Format Assistant" });
+		this.displayApiProfiles(containerEl);
 
 		new Setting(containerEl)
 			.setName("API Base URL")
@@ -298,6 +313,101 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 			cls: "format-assistant-setting-warning",
 			text: "Format Assistant only sends selected text for the command or sidebar action you run. It does not scan your vault or batch-edit notes."
 		});
+	}
+
+	private displayApiProfiles(containerEl: HTMLElement): void {
+		containerEl.createEl("h3", { text: "API Profiles" });
+
+		new Setting(containerEl)
+			.setName("Active API profile")
+			.setDesc("Switch between saved API settings. API keys are stored in plugin data and never logged.")
+			.addDropdown((dropdown) => {
+				dropdown.addOption("", "Manual current settings");
+				for (const profile of this.plugin.settings.apiProfiles) {
+					dropdown.addOption(profile.id, profile.name);
+				}
+
+				dropdown
+					.setValue(this.plugin.settings.activeApiProfileId)
+					.onChange(async (value) => {
+						if (!value) {
+							this.plugin.settings.activeApiProfileId = "";
+							await this.plugin.saveSettings();
+							this.plugin.refreshSidebarViews();
+							return;
+						}
+
+						const profile = this.plugin.settings.apiProfiles.find((item) => item.id === value);
+						if (!profile) {
+							new Notice("API profile not found.");
+							return;
+						}
+
+						await this.plugin.applyApiProfile(profile);
+						this.display();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Save current API settings")
+			.setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles.`)
+			.addText((text) => {
+				text.setPlaceholder("Profile name");
+				text.inputEl.addClass("format-assistant-profile-name-input");
+			})
+			.addButton((button) =>
+				button
+					.setButtonText("Save")
+					.onClick(async () => {
+						const input = containerEl.querySelector<HTMLInputElement>(
+							".format-assistant-profile-name-input"
+						);
+						const profileName = input?.value ?? "";
+
+						if (this.plugin.settings.apiProfiles.length >= MAX_API_PROFILES) {
+							new Notice(`API profiles are limited to ${MAX_API_PROFILES}.`);
+							return;
+						}
+
+						const profile = createApiProfileFromSettings(
+							this.plugin.settings,
+							profileName
+						);
+						this.plugin.settings.apiProfiles = [
+							...this.plugin.settings.apiProfiles,
+							profile
+						];
+						this.plugin.settings.activeApiProfileId = profile.id;
+						await this.plugin.saveSettings();
+						this.plugin.refreshSidebarViews();
+						new Notice("API profile saved.");
+						this.display();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Remove active API profile")
+			.setDesc("Removes the saved profile only. Current API fields stay unchanged.")
+			.addButton((button) =>
+				button
+					.setButtonText("Remove")
+					.setDisabled(!this.plugin.settings.activeApiProfileId)
+					.onClick(async () => {
+						const id = this.plugin.settings.activeApiProfileId;
+						if (!id) {
+							return;
+						}
+
+						this.plugin.settings.apiProfiles = this.plugin.settings.apiProfiles.filter(
+							(profile) => profile.id !== id
+						);
+						this.plugin.settings.activeApiProfileId = "";
+						await this.plugin.saveSettings();
+						this.plugin.refreshSidebarViews();
+						new Notice("API profile removed.");
+						this.display();
+					})
+			);
 	}
 
 	private toNumber(value: string, fallback: number, min: number): number {
