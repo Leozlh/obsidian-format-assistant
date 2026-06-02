@@ -8,7 +8,7 @@ import {
 	WorkspaceLeaf
 } from "obsidian";
 import type FormatAssistantPlugin from "./main";
-import type { FormatMode } from "./prompts";
+import { FORMAT_MODE_LABELS, type FormatMode } from "./prompts";
 import { ConfirmModal } from "./preview-modal";
 import {
 	describeSelection,
@@ -31,6 +31,13 @@ interface SelectionContext {
 }
 
 type SidebarInputSource = "selection" | "manual";
+
+const SIDEBAR_MODES: FormatMode[] = [
+	"obsidian-markdown",
+	"note-organize",
+	"diary-organize",
+	"custom"
+];
 
 interface GenerateInput {
 	text: string;
@@ -59,7 +66,9 @@ export class FormatAssistantSidebarView extends ItemView {
 	constructor(leaf: WorkspaceLeaf, plugin: FormatAssistantPlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		this.mode = "obsidian-markdown";
+		this.mode = SIDEBAR_MODES.includes(plugin.settings.sidebarDefaultMode)
+			? plugin.settings.sidebarDefaultMode
+			: "obsidian-markdown";
 	}
 
 	getViewType(): string {
@@ -246,9 +255,23 @@ export class FormatAssistantSidebarView extends ItemView {
 	private renderModeSelector(root: HTMLElement): void {
 		const panel = root.createDiv({ cls: "format-assistant-inline-field" });
 		panel.createSpan({ text: "Mode:" });
-		panel.createSpan({
-			cls: "format-assistant-static-value",
-			text: "Obsidian Markdown"
+
+		const select = panel.createEl("select", { cls: "format-assistant-select format-assistant-mode-select" });
+		for (const mode of SIDEBAR_MODES) {
+			select.createEl("option", {
+				text: FORMAT_MODE_LABELS[mode],
+				value: mode
+			});
+		}
+
+		select.value = this.mode;
+		select.addEventListener("change", () => {
+			this.mode = select.value as FormatMode;
+			this.plugin.settings.sidebarDefaultMode = this.mode;
+			void this.plugin.saveSettings();
+			this.statusText = `Mode: ${FORMAT_MODE_LABELS[this.mode]}.`;
+			this.errorText = "";
+			this.render();
 		});
 	}
 

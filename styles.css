@@ -180,6 +180,12 @@
 	white-space: nowrap;
 }
 
+.format-assistant-mode-select {
+	min-width: 0;
+	height: 30px;
+	font-size: var(--font-ui-small);
+}
+
 .format-assistant-button-row {
 	display: flex;
 	flex-wrap: wrap;

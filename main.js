@@ -169,6 +169,16 @@ var COURSE_NOTE_PROMPT = "\u6574\u7406\u4E3A\u8BFE\u7A0B\u7B14\u8BB0\uFF1A\n\u5C
 var REVIEW_CARD_PROMPT = "\u538B\u7F29\u4E3A\u590D\u4E60\u5361\u7247\uFF1A\n\u5C06\u5185\u5BB9\u538B\u7F29\u6210\u9AD8\u5BC6\u5EA6\u590D\u4E60\u7248\u3002\u4F18\u5148\u4FDD\u7559\u7ED3\u8BBA\u3001\u516C\u5F0F\u3001\u6761\u4EF6\u3001\u5173\u952E\u8BCD\u3001\u6613\u9519\u70B9\u548C\u6700\u77ED\u5FC5\u8981\u89E3\u91CA\u3002\u5C3D\u91CF\u77ED\u3001\u51C6\u3001\u53EF\u626B\u8BFB\uFF0C\u4F46\u4E0D\u8981\u9057\u6F0F\u539F\u6587\u5173\u952E\u903B\u8F91\uFF0C\u4E0D\u8981\u7F16\u9020\u5185\u5BB9\u3002";
 var WIKI_CANDIDATES_PROMPT = "\u63D0\u53D6 Wiki \u5019\u9009\u6761\u76EE\uFF1A\n\u4ECE\u5185\u5BB9\u4E2D\u63D0\u53D6\u9002\u5408\u5355\u72EC\u6C89\u6DC0\u4E3A Wiki \u7684\u6982\u5FF5\u3001\u516C\u5F0F\u3001\u65B9\u6CD5\u3001\u5B9A\u7406\u3001\u6A21\u578B\u6216\u5B9E\u9A8C\u672F\u8BED\u3002\u8F93\u51FA\u65F6\u6309\u6761\u76EE\u5217\u51FA\uFF0C\u6BCF\u4E2A\u6761\u76EE\u53EA\u4FDD\u7559\u6700\u5C0F\u5FC5\u8981\u5B9A\u4E49\u3001\u7528\u9014\u6216\u533A\u5206\u70B9\u3002\u4E0D\u8981\u81EA\u52A8\u521B\u5EFA\u94FE\u63A5\uFF0C\u4E0D\u8981\u6269\u5199\u6210\u5B8C\u6574\u6587\u7AE0\u3002";
 var CONCISE_PROMPT = "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u7CBE\u7B80\u4E3A\u66F4\u77ED\u3001\u66F4\u6E05\u695A\u7684 Markdown\uFF0C\u4E0D\u4E22\u5931\u6838\u5FC3\u516C\u5F0F\u3001\u9002\u7528\u6761\u4EF6\u3001\u5B9A\u4E49\u3001\u9650\u5236\u548C\u5173\u952E\u7ED3\u8BBA\u3002";
+var FORMAT_MODE_LABELS = {
+  "obsidian-markdown": "Obsidian Markdown",
+  "note-organize": "\u7B14\u8BB0\u6574\u7406",
+  "diary-organize": "\u65E5\u8BB0\u6574\u7406",
+  "course-note": "Course Note",
+  "review-card": "Review Card",
+  "wiki-candidates": "Wiki Candidates",
+  concise: "Concise",
+  custom: "Custom Instruction"
+};
 var FORMAT_TASKS = [
   {
     id: "format-selection-as-obsidian-markdown",
@@ -750,6 +760,12 @@ function countWords(text) {
 
 // src/sidebar-view.ts
 var FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
+var SIDEBAR_MODES = [
+  "obsidian-markdown",
+  "note-organize",
+  "diary-organize",
+  "custom"
+];
 var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -768,7 +784,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.manualInputEl = null;
     this.selectedPresetId = "";
     this.plugin = plugin;
-    this.mode = "obsidian-markdown";
+    this.mode = SIDEBAR_MODES.includes(plugin.settings.sidebarDefaultMode) ? plugin.settings.sidebarDefaultMode : "obsidian-markdown";
   }
   getViewType() {
     return FORMAT_ASSISTANT_VIEW_TYPE;
@@ -927,9 +943,21 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   renderModeSelector(root) {
     const panel = root.createDiv({ cls: "format-assistant-inline-field" });
     panel.createSpan({ text: "Mode:" });
-    panel.createSpan({
-      cls: "format-assistant-static-value",
-      text: "Obsidian Markdown"
+    const select = panel.createEl("select", { cls: "format-assistant-select format-assistant-mode-select" });
+    for (const mode of SIDEBAR_MODES) {
+      select.createEl("option", {
+        text: FORMAT_MODE_LABELS[mode],
+        value: mode
+      });
+    }
+    select.value = this.mode;
+    select.addEventListener("change", () => {
+      this.mode = select.value;
+      this.plugin.settings.sidebarDefaultMode = this.mode;
+      void this.plugin.saveSettings();
+      this.statusText = `Mode: ${FORMAT_MODE_LABELS[this.mode]}.`;
+      this.errorText = "";
+      this.render();
     });
   }
   renderManualInput(root) {
