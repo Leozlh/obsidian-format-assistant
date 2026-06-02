@@ -1,0 +1,25 @@
+{
+	"name": "obsidian-format-assistant",
+	"version": "0.1.0",
+	"description": "A lightweight Obsidian plugin for formatting selected text through a user-configured API.",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+	},
+	"keywords": [
+		"obsidian",
+		"obsidian-plugin",
+		"markdown"
+	],
+	"author": "Chuyunfeng",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^20.11.30",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "^0.28.0",
+		"obsidian": "^1.5.12",
+		"tslib": "^2.6.2",
+		"typescript": "^5.4.3"
+	}
+}
