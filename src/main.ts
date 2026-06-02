@@ -192,7 +192,8 @@ export default class FormatAssistantPlugin extends Plugin {
 		mode: FormatMode,
 		selectedText: string,
 		customInstruction: string,
-		currentFileName?: string
+		currentFileName?: string,
+		inputSource: "selection" | "manual" = "selection"
 	): Promise<string> {
 		const validationError = this.validateApiSettings();
 		if (validationError) {
@@ -202,6 +203,7 @@ export default class FormatAssistantPlugin extends Plugin {
 		return callChatCompletions(this.settings, {
 			mode,
 			selectedText,
+			inputSource,
 			customInstruction,
 			currentFileName: this.settings.includeCurrentFileNameInPrompt
 				? currentFileName
@@ -224,7 +226,7 @@ export default class FormatAssistantPlugin extends Plugin {
 
 	toUserError(error: unknown): string {
 		if (error instanceof DOMException && error.name === "AbortError") {
-			return "API request timed out.";
+			return `API request timed out after ${this.settings.timeoutSeconds}s. Try a shorter selection, lower max tokens, or increase Timeout to 60-90 seconds in settings.`;
 		}
 
 		if (error instanceof Error) {

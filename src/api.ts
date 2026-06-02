@@ -48,10 +48,18 @@ export async function callChatCompletions(
 
 		const content = data.choices?.[0]?.message?.content;
 		if (!content || typeof content !== "string") {
-			throw new Error("API returned an unexpected response format.");
+			throw new Error("API returned an unexpected response format: missing choices[0].message.content.");
 		}
 
 		return content.trim();
+	} catch (error) {
+		if (error instanceof DOMException && error.name === "AbortError") {
+			throw new Error(
+				`Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Selected: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the selection.`
+			);
+		}
+
+		throw error;
 	} finally {
 		window.clearTimeout(timeout);
 	}
@@ -84,8 +92,12 @@ function statusToMessage(status: number, data: ChatCompletionResponse): string {
 		return "API rate limit reached. Please wait and try again.";
 	}
 
+	if (status === 404) {
+		return "API endpoint returned 404. Check that Base URL is correct and only includes the API root, e.g. https://example.com/v1. Do not include /chat/completions.";
+	}
+
 	if (status >= 500) {
-		return "API server error. Please try again later.";
+		return `API server error (${status}). Please try again later.`;
 	}
 
 	return apiMessage

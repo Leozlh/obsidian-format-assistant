@@ -82,6 +82,10 @@ export function validateApiSettings(settings: FormatAssistantSettings): string |
 		return "API Base URL is required.";
 	}
 
+	if (settings.baseUrl.replace(/\/+$/, "").endsWith("/chat/completions")) {
+		return "Base URL should not include /chat/completions. Use the API root such as https://example.com/v1.";
+	}
+
 	if (!settings.apiKey.trim()) {
 		return "API key is required.";
 	}
@@ -200,13 +204,29 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 			.addTextArea((text) => {
 				text.inputEl.rows = 12;
 				text.inputEl.cols = 60;
+				text.inputEl.addClass("format-assistant-system-prompt-input");
 				text
 					.setValue(this.plugin.settings.systemPrompt)
 					.onChange(async (value) => {
 						this.plugin.settings.systemPrompt = value;
 						await this.plugin.saveSettings();
 					});
-			});
+			})
+			.addButton((button) =>
+				button
+					.setButtonText("Reset to default")
+					.onClick(async () => {
+						this.plugin.settings.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+						await this.plugin.saveSettings();
+						const input = containerEl.querySelector<HTMLTextAreaElement>(
+							".format-assistant-system-prompt-input"
+						);
+						if (input) {
+							input.value = DEFAULT_SYSTEM_PROMPT;
+						}
+						new Notice("System prompt reset to default.");
+					})
+			);
 
 		new Setting(containerEl)
 			.setName("Preview before replace")
@@ -257,7 +277,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Include full current note")
-			.setDesc("Reserved for a future explicit workflow. The first sidebar version never sends the full note.")
+			.setDesc("Not yet implemented. Currently only the captured selection is sent.")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.includeFullCurrentNote)
@@ -265,7 +285,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						this.plugin.settings.includeFullCurrentNote = value;
 						await this.plugin.saveSettings();
 						if (value) {
-							new Notice("Full-note sending is not implemented in this version.");
+							new Notice("Full-note context is not implemented yet. Only the captured selection will be sent.");
 						}
 					})
 			);
@@ -304,7 +324,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Active API profile")
-			.setDesc("Switch between saved API settings. API keys are stored in plugin data and never logged.")
+			.setDesc("Switch between saved API settings. API keys are stored in Obsidian plugin data with the profile settings and never logged.")
 			.addDropdown((dropdown) => {
 				dropdown.addOption("", "Manual current settings");
 				for (const profile of this.plugin.settings.apiProfiles) {
@@ -334,7 +354,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Save current API settings")
-			.setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles.`)
+			.setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles. API keys are stored in Obsidian plugin data with the profile settings.`)
 			.addText((text) => {
 				text.setPlaceholder("Profile name");
 				text.inputEl.addClass("format-assistant-profile-name-input");

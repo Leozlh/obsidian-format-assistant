@@ -134,6 +134,11 @@ ${options.customInstruction.trim()}`);
     sections.push(`\u5F53\u524D\u6587\u4EF6\u540D\uFF1A
 ${options.currentFileName.trim()}`);
   }
+  if (options.inputSource) {
+    sections.push(
+      options.inputSource === "manual" ? "\u8F93\u5165\u6765\u6E90\uFF1AManual input\uFF08\u7528\u6237\u5728\u4FA7\u680F\u624B\u52A8\u7C98\u8D34\u6216\u8F93\u5165\u7684\u6587\u672C\uFF09" : "\u8F93\u5165\u6765\u6E90\uFF1ACaptured selection\uFF08Obsidian \u7F16\u8F91\u5668\u4E2D\u7684\u9009\u4E2D\u6587\u672C\uFF09"
+    );
+  }
   sections.push(`\u8F93\u5165\u6587\u672C\uFF1A
 ${options.selectedText}`);
   return sections.join("\n\n");
@@ -191,9 +196,16 @@ async function callChatCompletions(settings, promptOptions) {
     }
     const content = (_c = (_b = (_a = data.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
     if (!content || typeof content !== "string") {
-      throw new Error("API returned an unexpected response format.");
+      throw new Error("API returned an unexpected response format: missing choices[0].message.content.");
     }
     return content.trim();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        `Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Selected: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the selection.`
+      );
+    }
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }
@@ -220,8 +232,11 @@ function statusToMessage(status, data) {
   if (status === 429) {
     return "API rate limit reached. Please wait and try again.";
   }
+  if (status === 404) {
+    return "API endpoint returned 404. Check that Base URL is correct and only includes the API root, e.g. https://example.com/v1. Do not include /chat/completions.";
+  }
   if (status >= 500) {
-    return "API server error. Please try again later.";
+    return `API server error (${status}). Please try again later.`;
   }
   return apiMessage ? `API request failed: ${apiMessage}` : `API request failed with status ${status}.`;
 }
@@ -378,6 +393,9 @@ function validateApiSettings(settings) {
   if (!settings.baseUrl.trim()) {
     return "API Base URL is required.";
   }
+  if (settings.baseUrl.replace(/\/+$/, "").endsWith("/chat/completions")) {
+    return "Base URL should not include /chat/completions. Use the API root such as https://example.com/v1.";
+  }
   if (!settings.apiKey.trim()) {
     return "API key is required.";
   }
@@ -443,11 +461,24 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     new import_obsidian2.Setting(containerEl).setName("System Prompt").setDesc("Global rules sent with each formatting request.").addTextArea((text) => {
       text.inputEl.rows = 12;
       text.inputEl.cols = 60;
+      text.inputEl.addClass("format-assistant-system-prompt-input");
       text.setValue(this.plugin.settings.systemPrompt).onChange(async (value) => {
         this.plugin.settings.systemPrompt = value;
         await this.plugin.saveSettings();
       });
-    });
+    }).addButton(
+      (button) => button.setButtonText("Reset to default").onClick(async () => {
+        this.plugin.settings.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+        await this.plugin.saveSettings();
+        const input = containerEl.querySelector(
+          ".format-assistant-system-prompt-input"
+        );
+        if (input) {
+          input.value = DEFAULT_SYSTEM_PROMPT;
+        }
+        new import_obsidian2.Notice("System prompt reset to default.");
+      })
+    );
     new import_obsidian2.Setting(containerEl).setName("Preview before replace").setDesc("When enabled, the preview shows both original and formatted text. Replacement still always requires confirmation.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.previewBeforeReplace).onChange(async (value) => {
         this.plugin.settings.previewBeforeReplace = value;
@@ -472,12 +503,12 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Include full current note").setDesc("Reserved for a future explicit workflow. The first sidebar version never sends the full note.").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Include full current note").setDesc("Not yet implemented. Currently only the captured selection is sent.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.includeFullCurrentNote).onChange(async (value) => {
         this.plugin.settings.includeFullCurrentNote = value;
         await this.plugin.saveSettings();
         if (value) {
-          new import_obsidian2.Notice("Full-note sending is not implemented in this version.");
+          new import_obsidian2.Notice("Full-note context is not implemented yet. Only the captured selection will be sent.");
         }
       })
     );
@@ -503,7 +534,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
   }
   displayApiProfiles(containerEl) {
     containerEl.createEl("h3", { text: "API Profiles" });
-    new import_obsidian2.Setting(containerEl).setName("Active API profile").setDesc("Switch between saved API settings. API keys are stored in plugin data and never logged.").addDropdown((dropdown) => {
+    new import_obsidian2.Setting(containerEl).setName("Active API profile").setDesc("Switch between saved API settings. API keys are stored in Obsidian plugin data with the profile settings and never logged.").addDropdown((dropdown) => {
       dropdown.addOption("", "Manual current settings");
       for (const profile of this.plugin.settings.apiProfiles) {
         dropdown.addOption(profile.id, profile.name);
@@ -524,7 +555,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         this.display();
       });
     });
-    new import_obsidian2.Setting(containerEl).setName("Save current API settings").setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles.`).addText((text) => {
+    new import_obsidian2.Setting(containerEl).setName("Save current API settings").setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles. API keys are stored in Obsidian plugin data with the profile settings.`).addText((text) => {
       text.setPlaceholder("Profile name");
       text.inputEl.addClass("format-assistant-profile-name-input");
     }).addButton(
@@ -608,6 +639,7 @@ var FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
+    this.manualInput = "";
     this.customInstruction = "";
     this.currentSelection = null;
     this.selectionContext = null;
@@ -616,7 +648,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.errorText = "";
     this.loading = false;
     this.completedMs = null;
+    this.lastGenerationSource = null;
+    this.lastInputLength = 0;
     this.customInputEl = null;
+    this.manualInputEl = null;
     this.selectedPresetId = "";
     this.plugin = plugin;
     this.mode = "obsidian-markdown";
@@ -649,6 +684,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.renderApiProfileSelector(root);
     this.renderContextPreview(root);
     this.renderModeSelector(root);
+    this.renderManualInput(root);
     this.renderInput(root);
     this.renderPromptPresets(root);
     this.renderSelectionControls(root);
@@ -656,10 +692,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.renderStatus(root);
   }
   refreshContextStatus() {
-    var _a, _b, _c;
-    const view = this.getActiveMarkdownView();
-    const selection = (_a = view == null ? void 0 : view.editor.getSelection()) != null ? _a : "";
-    const activeName = (_c = (_b = view == null ? void 0 : view.file) == null ? void 0 : _b.basename) != null ? _c : "No active Markdown file";
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const info = this.getActiveMarkdownInfo();
+    const selection = (_d = (_c = (_a = info == null ? void 0 : info.editor) == null ? void 0 : _a.getSelection()) != null ? _c : (_b = this.selectionContext) == null ? void 0 : _b.text) != null ? _d : "";
+    const activeName = (_h = (_g = (_e = this.selectionContext) == null ? void 0 : _e.fileName) != null ? _g : (_f = info == null ? void 0 : info.file) == null ? void 0 : _f.basename) != null ? _h : "No active Markdown file";
     if (!this.selectionContext) {
       this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. No selection captured.`;
     }
@@ -781,6 +817,62 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       text: "Obsidian Markdown"
     });
   }
+  renderManualInput(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel" });
+    const header = panel.createDiv({ cls: "format-assistant-section-header" });
+    header.createEl("h3", { text: "Manual Input" });
+    const manualStats = header.createSpan({
+      cls: "format-assistant-muted",
+      text: `Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
+    });
+    this.manualInputEl = panel.createEl("textarea", {
+      cls: "format-assistant-textarea format-assistant-manual-input",
+      attr: {
+        placeholder: "Paste text here if you want to process manual input instead of the current selection."
+      }
+    });
+    this.manualInputEl.value = this.manualInput;
+    this.manualInputEl.addEventListener("input", () => {
+      var _a, _b;
+      this.manualInput = (_b = (_a = this.manualInputEl) == null ? void 0 : _a.value) != null ? _b : "";
+      manualStats.setText(
+        `Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
+      );
+    });
+    panel.createDiv({
+      cls: "format-assistant-muted format-assistant-hint",
+      text: "Manual input takes priority over captured selection when non-empty."
+    });
+    const sourceStatus = panel.createDiv({
+      cls: "format-assistant-input-source",
+      text: `Input source: ${this.getCurrentInputSourceLabel()}`
+    });
+    const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
+    const useButton = buttons.createEl("button", { text: "Use manual input" });
+    useButton.disabled = !this.manualInput.trim();
+    const clearButton = buttons.createEl("button", { text: "Clear manual input" });
+    clearButton.disabled = !this.manualInput;
+    useButton.addEventListener("click", () => {
+      if (!this.manualInput.trim()) {
+        new import_obsidian3.Notice("Manual input is empty.");
+        return;
+      }
+      this.statusText = "Input source: Manual input.";
+      this.errorText = "";
+      this.render();
+      new import_obsidian3.Notice("Manual input will be used for Generate.");
+    });
+    clearButton.addEventListener("click", () => {
+      this.manualInput = "";
+      this.statusText = "Manual input cleared.";
+      this.render();
+    });
+    this.manualInputEl.addEventListener("input", () => {
+      sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
+      useButton.disabled = !this.manualInput.trim();
+      clearButton.disabled = !this.manualInput;
+    });
+  }
   renderInput(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Instruction" });
@@ -866,18 +958,20 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     const resultPanel = root.createDiv({ cls: "format-assistant-action-group" });
     resultPanel.createEl("h3", { text: "Result" });
     const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
+    const canCopy = Boolean(this.outputText) && !this.loading && !this.errorText;
+    const canWriteSelection = canCopy && this.lastGenerationSource === "selection";
     const copyButton = resultButtons.createEl("button", { text: "Copy" });
-    copyButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
+    copyButton.disabled = !canCopy;
     copyButton.addEventListener("click", () => {
       void this.copyResult();
     });
     const replaceButton = resultButtons.createEl("button", { text: "Replace" });
-    replaceButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
+    replaceButton.disabled = !canWriteSelection;
     replaceButton.addEventListener("click", () => {
       this.confirmReplace();
     });
     const insertButton = resultButtons.createEl("button", { text: "Insert below" });
-    insertButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
+    insertButton.disabled = !canWriteSelection;
     insertButton.addEventListener("click", () => {
       this.confirmInsertBelow();
     });
@@ -915,9 +1009,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     if (this.completedMs !== null) {
+      const source = this.lastGenerationSource ? this.formatInputSource(this.lastGenerationSource) : "Unknown";
       parent.createDiv({
         cls: "format-assistant-muted",
-        text: `Completed in ${this.completedMs} ms`
+        text: `Generated from: ${source}. Completed in ${this.completedMs} ms`
       });
     }
     parent.createEl("pre", {
@@ -939,7 +1034,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     if (this.statusText) {
       panel.createDiv({ text: this.statusText });
     }
-    if (this.selectionContext) {
+    if (this.selectionContext && !this.manualInput.trim()) {
       panel.createDiv({
         cls: "format-assistant-muted",
         text: `Prompt context: ${this.describeText(this.selectionContext.text)}.`
@@ -953,16 +1048,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     }
   }
   async generate() {
-    var _a, _b, _c, _d;
-    if (!((_a = this.selectionContext) == null ? void 0 : _a.text.trim())) {
-      this.captureCurrentSelection(false);
-      if ((_b = this.currentSelection) == null ? void 0 : _b.text.trim()) {
-        this.setSelectionContextFromPreview(this.currentSelection);
-      }
-    }
-    if (!((_c = this.selectionContext) == null ? void 0 : _c.text.trim())) {
-      this.setError("No selection captured. Click Refresh or Use, then Generate.");
-      new import_obsidian3.Notice("No selection captured. Click Refresh or Use, then Generate.");
+    const input = this.getGenerateInput();
+    if (!input) {
+      this.setError("No input text. Select text in an editor or paste text into Manual Input.");
+      new import_obsidian3.Notice("No input text. Select text in an editor or paste text into Manual Input.");
       return;
     }
     const validationError = this.plugin.validateApiSettings();
@@ -976,20 +1065,24 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.errorText = "";
     this.statusText = "Generating...";
     this.completedMs = null;
+    this.lastGenerationSource = input.source;
+    this.lastInputLength = input.text.length;
     this.render();
+    const startedAt = performance.now();
     try {
-      const startedAt = performance.now();
       this.outputText = await this.plugin.generateFromSelection(
         this.mode,
-        this.selectionContext.text,
+        input.text,
         this.customInstruction,
-        (_d = this.selectionContext.fileName) != null ? _d : void 0
+        input.currentFileName,
+        input.source
       );
       this.completedMs = Math.round(performance.now() - startedAt);
-      this.statusText = `Generated ${this.describeText(this.outputText)}.`;
+      this.statusText = `Generated from: ${this.formatInputSource(input.source)}. Completed in ${this.completedMs} ms.`;
     } catch (error) {
+      this.completedMs = Math.round(performance.now() - startedAt);
       this.errorText = this.plugin.toUserError(error);
-      this.statusText = "";
+      this.statusText = `Failed after ${this.completedMs} ms. Input source: ${this.formatInputSource(input.source)}. Input length: ${input.text.length} chars.`;
       new import_obsidian3.Notice(this.errorText);
     } finally {
       this.loading = false;
@@ -1011,6 +1104,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       new import_obsidian3.Notice("No result to replace with.");
       return;
     }
+    if (this.lastGenerationSource !== "selection") {
+      new import_obsidian3.Notice("Replace selection is only available when the input comes from a captured editor selection.");
+      return;
+    }
     new ConfirmModal(this.app, {
       message: "\u786E\u8BA4\u7528\u751F\u6210\u7ED3\u679C\u66FF\u6362\u5F53\u524D\u9009\u533A\u5417\uFF1F",
       confirmText: "Replace selection",
@@ -1020,6 +1117,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   confirmInsertBelow() {
     if (!this.outputText) {
       new import_obsidian3.Notice("No result to insert.");
+      return;
+    }
+    if (this.lastGenerationSource !== "selection") {
+      new import_obsidian3.Notice("Insert below selection is only available when the input comes from a captured editor selection.");
       return;
     }
     new ConfirmModal(this.app, {
@@ -1154,6 +1255,47 @@ ${this.outputText}`,
   }
   describeText(text) {
     return describeSelection(text);
+  }
+  getGenerateInput() {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const manualText = this.manualInput.trim();
+    if (manualText) {
+      return {
+        text: manualText,
+        source: "manual",
+        currentFileName: (_c = (_b = (_a = this.getActiveMarkdownInfo()) == null ? void 0 : _a.file) == null ? void 0 : _b.basename) != null ? _c : void 0
+      };
+    }
+    if (!((_d = this.selectionContext) == null ? void 0 : _d.text.trim())) {
+      this.captureCurrentSelection(false);
+      if ((_e = this.currentSelection) == null ? void 0 : _e.text.trim()) {
+        this.setSelectionContextFromPreview(this.currentSelection);
+      }
+    }
+    if (!((_f = this.selectionContext) == null ? void 0 : _f.text.trim())) {
+      return null;
+    }
+    return {
+      text: this.selectionContext.text,
+      source: "selection",
+      currentFileName: (_g = this.selectionContext.fileName) != null ? _g : void 0
+    };
+  }
+  getCurrentInputSourceLabel() {
+    var _a;
+    if (this.manualInput.trim()) {
+      return "Manual input";
+    }
+    if ((_a = this.selectionContext) == null ? void 0 : _a.text.trim()) {
+      return "Captured selection";
+    }
+    return "None";
+  }
+  formatInputSource(source) {
+    return source === "manual" ? "Manual input" : "Captured selection";
+  }
+  countWords(text) {
+    return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
   }
   countLines(text) {
     return text.trim() ? text.split(/\r?\n/).length : 0;
@@ -1385,7 +1527,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
   validateApiSettings() {
     return validateApiSettings(this.settings);
   }
-  async generateFromSelection(mode, selectedText, customInstruction, currentFileName) {
+  async generateFromSelection(mode, selectedText, customInstruction, currentFileName, inputSource = "selection") {
     const validationError = this.validateApiSettings();
     if (validationError) {
       throw new Error(validationError);
@@ -1393,6 +1535,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     return callChatCompletions(this.settings, {
       mode,
       selectedText,
+      inputSource,
       customInstruction,
       currentFileName: this.settings.includeCurrentFileNameInPrompt ? currentFileName : void 0
     });
@@ -1410,7 +1553,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
   }
   toUserError(error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      return "API request timed out.";
+      return `API request timed out after ${this.settings.timeoutSeconds}s. Try a shorter selection, lower max tokens, or increase Timeout to 60-90 seconds in settings.`;
     }
     if (error instanceof Error) {
       return error.message;

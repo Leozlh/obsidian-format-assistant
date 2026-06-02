@@ -15,6 +15,7 @@ export interface FormatTask {
 export interface PromptOptions {
 	mode: FormatMode;
 	selectedText: string;
+	inputSource?: "selection" | "manual";
 	customInstruction?: string;
 	currentFileName?: string;
 }
@@ -110,6 +111,14 @@ export function buildUserPrompt(options: PromptOptions): string {
 
 	if (options.currentFileName?.trim()) {
 		sections.push(`当前文件名：\n${options.currentFileName.trim()}`);
+	}
+
+	if (options.inputSource) {
+		sections.push(
+			options.inputSource === "manual"
+				? "输入来源：Manual input（用户在侧栏手动粘贴或输入的文本）"
+				: "输入来源：Captured selection（Obsidian 编辑器中的选中文本）"
+		);
 	}
 
 	sections.push(`输入文本：\n${options.selectedText}`);

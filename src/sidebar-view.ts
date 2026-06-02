@@ -30,9 +30,18 @@ interface SelectionContext {
 	to: EditorPosition;
 }
 
+type SidebarInputSource = "selection" | "manual";
+
+interface GenerateInput {
+	text: string;
+	source: SidebarInputSource;
+	currentFileName?: string;
+}
+
 export class FormatAssistantSidebarView extends ItemView {
 	private plugin: FormatAssistantPlugin;
 	private mode: FormatMode;
+	private manualInput = "";
 	private customInstruction = "";
 	private currentSelection: ActiveSelectionPreview | null = null;
 	private selectionContext: SelectionContext | null = null;
@@ -41,7 +50,10 @@ export class FormatAssistantSidebarView extends ItemView {
 	private errorText = "";
 	private loading = false;
 	private completedMs: number | null = null;
+	private lastGenerationSource: SidebarInputSource | null = null;
+	private lastInputLength = 0;
 	private customInputEl: HTMLTextAreaElement | null = null;
+	private manualInputEl: HTMLTextAreaElement | null = null;
 	private selectedPresetId = "";
 
 	constructor(leaf: WorkspaceLeaf, plugin: FormatAssistantPlugin) {
@@ -84,6 +96,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.renderApiProfileSelector(root);
 		this.renderContextPreview(root);
 		this.renderModeSelector(root);
+		this.renderManualInput(root);
 		this.renderInput(root);
 		this.renderPromptPresets(root);
 		this.renderSelectionControls(root);
@@ -92,9 +105,9 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	refreshContextStatus(): void {
-		const view = this.getActiveMarkdownView();
-		const selection = view?.editor.getSelection() ?? "";
-		const activeName = view?.file?.basename ?? "No active Markdown file";
+		const info = this.getActiveMarkdownInfo();
+		const selection = info?.editor?.getSelection() ?? this.selectionContext?.text ?? "";
+		const activeName = this.selectionContext?.fileName ?? info?.file?.basename ?? "No active Markdown file";
 
 		if (!this.selectionContext) {
 			this.statusText = selection.trim()
@@ -238,6 +251,70 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 	}
 
+	private renderManualInput(root: HTMLElement): void {
+		const panel = root.createDiv({ cls: "format-assistant-panel" });
+		const header = panel.createDiv({ cls: "format-assistant-section-header" });
+		header.createEl("h3", { text: "Manual Input" });
+		const manualStats = header.createSpan({
+			cls: "format-assistant-muted",
+			text: `Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
+		});
+
+		this.manualInputEl = panel.createEl("textarea", {
+			cls: "format-assistant-textarea format-assistant-manual-input",
+			attr: {
+				placeholder: "Paste text here if you want to process manual input instead of the current selection."
+			}
+		});
+		this.manualInputEl.value = this.manualInput;
+		this.manualInputEl.addEventListener("input", () => {
+			this.manualInput = this.manualInputEl?.value ?? "";
+			manualStats.setText(
+				`Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
+			);
+		});
+
+		panel.createDiv({
+			cls: "format-assistant-muted format-assistant-hint",
+			text: "Manual input takes priority over captured selection when non-empty."
+		});
+
+		const sourceStatus = panel.createDiv({
+			cls: "format-assistant-input-source",
+			text: `Input source: ${this.getCurrentInputSourceLabel()}`
+		});
+
+		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
+		const useButton = buttons.createEl("button", { text: "Use manual input" });
+		useButton.disabled = !this.manualInput.trim();
+		const clearButton = buttons.createEl("button", { text: "Clear manual input" });
+		clearButton.disabled = !this.manualInput;
+
+		useButton.addEventListener("click", () => {
+			if (!this.manualInput.trim()) {
+				new Notice("Manual input is empty.");
+				return;
+			}
+
+			this.statusText = "Input source: Manual input.";
+			this.errorText = "";
+			this.render();
+			new Notice("Manual input will be used for Generate.");
+		});
+
+		clearButton.addEventListener("click", () => {
+			this.manualInput = "";
+			this.statusText = "Manual input cleared.";
+			this.render();
+		});
+
+		this.manualInputEl.addEventListener("input", () => {
+			sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
+			useButton.disabled = !this.manualInput.trim();
+			clearButton.disabled = !this.manualInput;
+		});
+	}
+
 	private renderInput(root: HTMLElement): void {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		panel.createEl("h3", { text: "Instruction" });
@@ -338,21 +415,23 @@ export class FormatAssistantSidebarView extends ItemView {
 		const resultPanel = root.createDiv({ cls: "format-assistant-action-group" });
 		resultPanel.createEl("h3", { text: "Result" });
 		const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
+		const canCopy = Boolean(this.outputText) && !this.loading && !this.errorText;
+		const canWriteSelection = canCopy && this.lastGenerationSource === "selection";
 
 		const copyButton = resultButtons.createEl("button", { text: "Copy" });
-		copyButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
+		copyButton.disabled = !canCopy;
 		copyButton.addEventListener("click", () => {
 			void this.copyResult();
 		});
 
 		const replaceButton = resultButtons.createEl("button", { text: "Replace" });
-		replaceButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
+		replaceButton.disabled = !canWriteSelection;
 		replaceButton.addEventListener("click", () => {
 			this.confirmReplace();
 		});
 
 		const insertButton = resultButtons.createEl("button", { text: "Insert below" });
-		insertButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
+		insertButton.disabled = !canWriteSelection;
 		insertButton.addEventListener("click", () => {
 			this.confirmInsertBelow();
 		});
@@ -396,9 +475,12 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		if (this.completedMs !== null) {
+			const source = this.lastGenerationSource
+				? this.formatInputSource(this.lastGenerationSource)
+				: "Unknown";
 			parent.createDiv({
 				cls: "format-assistant-muted",
-				text: `Completed in ${this.completedMs} ms`
+				text: `Generated from: ${source}. Completed in ${this.completedMs} ms`
 			});
 		}
 
@@ -426,7 +508,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			panel.createDiv({ text: this.statusText });
 		}
 
-		if (this.selectionContext) {
+		if (this.selectionContext && !this.manualInput.trim()) {
 			panel.createDiv({
 				cls: "format-assistant-muted",
 				text: `Prompt context: ${this.describeText(this.selectionContext.text)}.`
@@ -442,16 +524,10 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private async generate(): Promise<void> {
-		if (!this.selectionContext?.text.trim()) {
-			this.captureCurrentSelection(false);
-			if (this.currentSelection?.text.trim()) {
-				this.setSelectionContextFromPreview(this.currentSelection);
-			}
-		}
-
-		if (!this.selectionContext?.text.trim()) {
-			this.setError("No selection captured. Click Refresh or Use, then Generate.");
-			new Notice("No selection captured. Click Refresh or Use, then Generate.");
+		const input = this.getGenerateInput();
+		if (!input) {
+			this.setError("No input text. Select text in an editor or paste text into Manual Input.");
+			new Notice("No input text. Select text in an editor or paste text into Manual Input.");
 			return;
 		}
 
@@ -467,21 +543,25 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.errorText = "";
 		this.statusText = "Generating...";
 		this.completedMs = null;
+		this.lastGenerationSource = input.source;
+		this.lastInputLength = input.text.length;
 		this.render();
 
+		const startedAt = performance.now();
 		try {
-			const startedAt = performance.now();
 			this.outputText = await this.plugin.generateFromSelection(
 				this.mode,
-				this.selectionContext.text,
+				input.text,
 				this.customInstruction,
-				this.selectionContext.fileName ?? undefined
+				input.currentFileName,
+				input.source
 			);
 			this.completedMs = Math.round(performance.now() - startedAt);
-			this.statusText = `Generated ${this.describeText(this.outputText)}.`;
+			this.statusText = `Generated from: ${this.formatInputSource(input.source)}. Completed in ${this.completedMs} ms.`;
 		} catch (error) {
+			this.completedMs = Math.round(performance.now() - startedAt);
 			this.errorText = this.plugin.toUserError(error);
-			this.statusText = "";
+			this.statusText = `Failed after ${this.completedMs} ms. Input source: ${this.formatInputSource(input.source)}. Input length: ${input.text.length} chars.`;
 			new Notice(this.errorText);
 		} finally {
 			this.loading = false;
@@ -507,6 +587,11 @@ export class FormatAssistantSidebarView extends ItemView {
 			return;
 		}
 
+		if (this.lastGenerationSource !== "selection") {
+			new Notice("Replace selection is only available when the input comes from a captured editor selection.");
+			return;
+		}
+
 		new ConfirmModal(this.app, {
 			message: "确认用生成结果替换当前选区吗？",
 			confirmText: "Replace selection",
@@ -517,6 +602,11 @@ export class FormatAssistantSidebarView extends ItemView {
 	private confirmInsertBelow(): void {
 		if (!this.outputText) {
 			new Notice("No result to insert.");
+			return;
+		}
+
+		if (this.lastGenerationSource !== "selection") {
+			new Notice("Insert below selection is only available when the input comes from a captured editor selection.");
 			return;
 		}
 
@@ -677,6 +767,54 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private describeText(text: string): string {
 		return describeSelection(text);
+	}
+
+	private getGenerateInput(): GenerateInput | null {
+		const manualText = this.manualInput.trim();
+		if (manualText) {
+			return {
+				text: manualText,
+				source: "manual",
+				currentFileName: this.getActiveMarkdownInfo()?.file?.basename ?? undefined
+			};
+		}
+
+		if (!this.selectionContext?.text.trim()) {
+			this.captureCurrentSelection(false);
+			if (this.currentSelection?.text.trim()) {
+				this.setSelectionContextFromPreview(this.currentSelection);
+			}
+		}
+
+		if (!this.selectionContext?.text.trim()) {
+			return null;
+		}
+
+		return {
+			text: this.selectionContext.text,
+			source: "selection",
+			currentFileName: this.selectionContext.fileName ?? undefined
+		};
+	}
+
+	private getCurrentInputSourceLabel(): string {
+		if (this.manualInput.trim()) {
+			return "Manual input";
+		}
+
+		if (this.selectionContext?.text.trim()) {
+			return "Captured selection";
+		}
+
+		return "None";
+	}
+
+	private formatInputSource(source: SidebarInputSource): string {
+		return source === "manual" ? "Manual input" : "Captured selection";
+	}
+
+	private countWords(text: string): number {
+		return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 	}
 
 	private countLines(text: string): number {

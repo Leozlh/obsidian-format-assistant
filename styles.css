@@ -150,6 +150,20 @@
 	line-height: 1.45;
 }
 
+.format-assistant-manual-input {
+	min-height: 82px;
+	max-height: 20vh;
+}
+
+.format-assistant-input-source {
+	padding: 4px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 .format-assistant-inline-field {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr);
