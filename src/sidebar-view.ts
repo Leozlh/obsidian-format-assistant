@@ -85,7 +85,6 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		this.renderHeader(root);
 		this.renderContextPreview(root);
-		this.renderContext(root);
 		this.renderModeSelector(root);
 		this.renderInput(root);
 		this.renderPromptPresets(root);
@@ -195,28 +194,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 	}
 
-	private renderContext(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-panel" });
-		panel.createEl("h3", { text: "Context" });
-
-		const activeView = this.getActiveMarkdownView();
-		const activeInfo = this.getActiveMarkdownInfo();
-		const activeSelection = activeInfo?.editor?.getSelection() ?? "";
-		const rows = [
-			["Current file", this.currentSelection?.fileName ?? this.selectionContext?.fileName ?? activeInfo?.file?.basename ?? activeView?.file?.basename ?? "None"],
-			["Current editor selection", this.currentSelection?.text.trim() || activeSelection.trim() ? "Yes" : "No"],
-			["Captured selection", this.selectionContext ? this.describeText(this.selectionContext.text) : "None"],
-			["Mode", FORMAT_MODE_LABELS[this.mode]]
-		];
-
-		const list = panel.createDiv({ cls: "format-assistant-context-list" });
-		for (const [label, value] of rows) {
-			const row = list.createDiv({ cls: "format-assistant-context-row" });
-			row.createSpan({ text: label });
-			row.createSpan({ text: value });
-		}
-	}
-
 	private renderModeSelector(root: HTMLElement): void {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		panel.createEl("h3", { text: "Mode" });
@@ -281,7 +258,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.selectedPresetId = select.value;
 		});
 
-		const buttons = panel.createDiv({ cls: "format-assistant-button-row" });
+		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
 
 		const addButton = buttons.createEl("button", { text: "Add current input as preset" });
 		addButton.addEventListener("click", () => {
@@ -300,15 +277,17 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private renderSelectionControls(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-button-row" });
+		const panel = root.createDiv({ cls: "format-assistant-action-group" });
+		panel.createEl("h3", { text: "Selection" });
+		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
 
-		const useButton = panel.createEl("button", { text: "Use current selection" });
+		const useButton = buttons.createEl("button", { text: "Use selection" });
 		useButton.addEventListener("click", () => this.useCurrentSelection(true));
 
-		const refreshButton = panel.createEl("button", { text: "Refresh selection" });
+		const refreshButton = buttons.createEl("button", { text: "Refresh" });
 		refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
 
-		const clearButton = panel.createEl("button", { text: "Clear context" });
+		const clearButton = buttons.createEl("button", { text: "Clear" });
 		clearButton.addEventListener("click", () => {
 			this.currentSelection = null;
 			this.selectionContext = null;
@@ -319,36 +298,41 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private renderActions(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-button-row" });
+		const generatePanel = root.createDiv({ cls: "format-assistant-action-group" });
+		generatePanel.createEl("h3", { text: "Generate" });
 
-		const generateButton = panel.createEl("button", {
+		const generateButton = generatePanel.createEl("button", {
 			text: this.loading ? "Generating..." : "Generate",
-			cls: "mod-cta"
+			cls: "mod-cta format-assistant-full-button"
 		});
 		generateButton.disabled = this.loading;
 		generateButton.addEventListener("click", () => {
 			void this.generate();
 		});
 
-		const copyButton = panel.createEl("button", { text: "Copy result" });
+		const resultPanel = root.createDiv({ cls: "format-assistant-action-group" });
+		resultPanel.createEl("h3", { text: "Result" });
+		const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
+
+		const copyButton = resultButtons.createEl("button", { text: "Copy" });
 		copyButton.disabled = !this.outputText;
 		copyButton.addEventListener("click", () => {
 			void this.copyResult();
 		});
 
-		const replaceButton = panel.createEl("button", { text: "Replace selection" });
+		const replaceButton = resultButtons.createEl("button", { text: "Replace" });
 		replaceButton.disabled = !this.outputText;
 		replaceButton.addEventListener("click", () => {
 			this.confirmReplace();
 		});
 
-		const insertButton = panel.createEl("button", { text: "Insert below selection" });
+		const insertButton = resultButtons.createEl("button", { text: "Insert below" });
 		insertButton.disabled = !this.outputText;
 		insertButton.addEventListener("click", () => {
 			this.confirmInsertBelow();
 		});
 
-		const cancelButton = panel.createEl("button", { text: "Cancel / Clear" });
+		const cancelButton = resultButtons.createEl("button", { text: "Clear output" });
 		cancelButton.addEventListener("click", () => {
 			this.outputText = "";
 			this.errorText = "";

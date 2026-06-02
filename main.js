@@ -555,7 +555,6 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     root.addClass("format-assistant-sidebar");
     this.renderHeader(root);
     this.renderContextPreview(root);
-    this.renderContext(root);
     this.renderModeSelector(root);
     this.renderInput(root);
     this.renderPromptPresets(root);
@@ -651,26 +650,6 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       text: preview.text
     });
   }
-  renderContext(root) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-    const panel = root.createDiv({ cls: "format-assistant-panel" });
-    panel.createEl("h3", { text: "Context" });
-    const activeView = this.getActiveMarkdownView();
-    const activeInfo = this.getActiveMarkdownInfo();
-    const activeSelection = (_b = (_a = activeInfo == null ? void 0 : activeInfo.editor) == null ? void 0 : _a.getSelection()) != null ? _b : "";
-    const rows = [
-      ["Current file", (_j = (_i = (_g = (_e = (_c = this.currentSelection) == null ? void 0 : _c.fileName) != null ? _e : (_d = this.selectionContext) == null ? void 0 : _d.fileName) != null ? _g : (_f = activeInfo == null ? void 0 : activeInfo.file) == null ? void 0 : _f.basename) != null ? _i : (_h = activeView == null ? void 0 : activeView.file) == null ? void 0 : _h.basename) != null ? _j : "None"],
-      ["Current editor selection", ((_k = this.currentSelection) == null ? void 0 : _k.text.trim()) || activeSelection.trim() ? "Yes" : "No"],
-      ["Captured selection", this.selectionContext ? this.describeText(this.selectionContext.text) : "None"],
-      ["Mode", FORMAT_MODE_LABELS[this.mode]]
-    ];
-    const list = panel.createDiv({ cls: "format-assistant-context-list" });
-    for (const [label, value] of rows) {
-      const row = list.createDiv({ cls: "format-assistant-context-row" });
-      row.createSpan({ text: label });
-      row.createSpan({ text: value });
-    }
-  }
   renderModeSelector(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Mode" });
@@ -727,7 +706,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     select.addEventListener("change", () => {
       this.selectedPresetId = select.value;
     });
-    const buttons = panel.createDiv({ cls: "format-assistant-button-row" });
+    const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
     const addButton = buttons.createEl("button", { text: "Add current input as preset" });
     addButton.addEventListener("click", () => {
       void this.addCurrentInputAsPreset();
@@ -742,12 +721,14 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     });
   }
   renderSelectionControls(root) {
-    const panel = root.createDiv({ cls: "format-assistant-button-row" });
-    const useButton = panel.createEl("button", { text: "Use current selection" });
+    const panel = root.createDiv({ cls: "format-assistant-action-group" });
+    panel.createEl("h3", { text: "Selection" });
+    const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
+    const useButton = buttons.createEl("button", { text: "Use selection" });
     useButton.addEventListener("click", () => this.useCurrentSelection(true));
-    const refreshButton = panel.createEl("button", { text: "Refresh selection" });
+    const refreshButton = buttons.createEl("button", { text: "Refresh" });
     refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
-    const clearButton = panel.createEl("button", { text: "Clear context" });
+    const clearButton = buttons.createEl("button", { text: "Clear" });
     clearButton.addEventListener("click", () => {
       this.currentSelection = null;
       this.selectionContext = null;
@@ -757,31 +738,35 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     });
   }
   renderActions(root) {
-    const panel = root.createDiv({ cls: "format-assistant-button-row" });
-    const generateButton = panel.createEl("button", {
+    const generatePanel = root.createDiv({ cls: "format-assistant-action-group" });
+    generatePanel.createEl("h3", { text: "Generate" });
+    const generateButton = generatePanel.createEl("button", {
       text: this.loading ? "Generating..." : "Generate",
-      cls: "mod-cta"
+      cls: "mod-cta format-assistant-full-button"
     });
     generateButton.disabled = this.loading;
     generateButton.addEventListener("click", () => {
       void this.generate();
     });
-    const copyButton = panel.createEl("button", { text: "Copy result" });
+    const resultPanel = root.createDiv({ cls: "format-assistant-action-group" });
+    resultPanel.createEl("h3", { text: "Result" });
+    const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
+    const copyButton = resultButtons.createEl("button", { text: "Copy" });
     copyButton.disabled = !this.outputText;
     copyButton.addEventListener("click", () => {
       void this.copyResult();
     });
-    const replaceButton = panel.createEl("button", { text: "Replace selection" });
+    const replaceButton = resultButtons.createEl("button", { text: "Replace" });
     replaceButton.disabled = !this.outputText;
     replaceButton.addEventListener("click", () => {
       this.confirmReplace();
     });
-    const insertButton = panel.createEl("button", { text: "Insert below selection" });
+    const insertButton = resultButtons.createEl("button", { text: "Insert below" });
     insertButton.disabled = !this.outputText;
     insertButton.addEventListener("click", () => {
       this.confirmInsertBelow();
     });
-    const cancelButton = panel.createEl("button", { text: "Cancel / Clear" });
+    const cancelButton = resultButtons.createEl("button", { text: "Clear output" });
     cancelButton.addEventListener("click", () => {
       this.outputText = "";
       this.errorText = "";
