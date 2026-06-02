@@ -2,6 +2,7 @@ import {
 	Editor,
 	EditorPosition,
 	ItemView,
+	MarkdownFileInfo,
 	MarkdownView,
 	Notice,
 	WorkspaceLeaf
@@ -13,7 +14,11 @@ import {
 	type FormatMode
 } from "./prompts";
 import { ConfirmModal } from "./preview-modal";
-import { getActiveSelectionPreview } from "./sidebar-context";
+import {
+	describeSelection,
+	getActiveSelectionPreview,
+	type ActiveSelectionPreview
+} from "./sidebar-context";
 import {
 	createPromptPreset,
 	MAX_PROMPT_PRESETS
@@ -33,6 +38,7 @@ export class FormatAssistantSidebarView extends ItemView {
 	private plugin: FormatAssistantPlugin;
 	private mode: FormatMode;
 	private customInstruction = "";
+	private currentSelection: ActiveSelectionPreview | null = null;
 	private selectionContext: SelectionContext | null = null;
 	private outputText = "";
 	private statusText = "";
@@ -60,6 +66,7 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	async onOpen() {
+		this.captureCurrentSelection(false);
 		this.render();
 		this.refreshContextStatus();
 		if (this.plugin.settings.autoUseSelectionOnSidebarOpen) {
@@ -107,20 +114,18 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	useCurrentSelection(showNotice = true): void {
-		const view = this.getActiveMarkdownView();
-		if (!view) {
-			this.setError("No active Markdown editor.");
-			if (showNotice) {
-				new Notice("No active Markdown editor.");
-			}
+		if (!this.captureCurrentSelection(showNotice)) {
 			return;
 		}
 
-		this.setContextFromEditor(view.editor, view, showNotice);
+		if (showNotice) {
+			new Notice("Selection sent to Format Assistant.");
+		}
 	}
 
 	setContextFromEditor(editor: Editor, view: MarkdownView | null, showNotice: boolean): void {
 		const selectedText = editor.getSelection();
+		this.currentSelection = getActiveSelectionPreview(view ?? this.app.workspace.activeEditor);
 		if (!selectedText.trim()) {
 			this.setError("Please select text first.");
 			if (showNotice) {
@@ -165,14 +170,18 @@ export class FormatAssistantSidebarView extends ItemView {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		const header = panel.createDiv({ cls: "format-assistant-section-header" });
 		header.createEl("h3", { text: "Context Preview" });
-
-		const activePreview = getActiveSelectionPreview(this.getActiveMarkdownView());
+		const preview = this.currentSelection ?? getActiveSelectionPreview(this.getActiveMarkdownInfo());
 		header.createSpan({
 			cls: "format-assistant-muted",
-			text: `${activePreview.wordCount} words / ${activePreview.characterCount} chars`
+			text: `当前选区：${preview.characterCount} chars / ${preview.wordCount} words`
 		});
 
-		if (!activePreview.text.trim()) {
+		panel.createDiv({
+			cls: "format-assistant-muted",
+			text: "打开侧栏后请点击 Use current selection 或 Refresh selection 捕获最新选区。"
+		});
+
+		if (!preview.text.trim()) {
 			panel.createDiv({
 				cls: "format-assistant-empty format-assistant-context-preview",
 				text: "请先选择文本"
@@ -182,7 +191,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		panel.createEl("pre", {
 			cls: "format-assistant-context-preview",
-			text: activePreview.text
+			text: preview.text
 		});
 	}
 
@@ -191,10 +200,11 @@ export class FormatAssistantSidebarView extends ItemView {
 		panel.createEl("h3", { text: "Context" });
 
 		const activeView = this.getActiveMarkdownView();
-		const activeSelection = activeView?.editor.getSelection() ?? "";
+		const activeInfo = this.getActiveMarkdownInfo();
+		const activeSelection = activeInfo?.editor?.getSelection() ?? "";
 		const rows = [
-			["Current file", this.selectionContext?.fileName ?? activeView?.file?.basename ?? "None"],
-			["Current editor selection", activeSelection.trim() ? "Yes" : "No"],
+			["Current file", this.currentSelection?.fileName ?? this.selectionContext?.fileName ?? activeInfo?.file?.basename ?? activeView?.file?.basename ?? "None"],
+			["Current editor selection", this.currentSelection?.text.trim() || activeSelection.trim() ? "Yes" : "No"],
 			["Captured selection", this.selectionContext ? this.describeText(this.selectionContext.text) : "None"],
 			["Mode", FORMAT_MODE_LABELS[this.mode]]
 		];
@@ -300,6 +310,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		const clearButton = panel.createEl("button", { text: "Clear context" });
 		clearButton.addEventListener("click", () => {
+			this.currentSelection = null;
 			this.selectionContext = null;
 			this.statusText = "Context cleared.";
 			this.errorText = "";
@@ -400,8 +411,15 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private async generate(): Promise<void> {
 		if (!this.selectionContext?.text.trim()) {
-			this.setError("Please select text first.");
-			new Notice("Please select text first.");
+			this.captureCurrentSelection(false);
+			if (this.currentSelection?.text.trim()) {
+				this.setSelectionContextFromPreview(this.currentSelection);
+			}
+		}
+
+		if (!this.selectionContext?.text.trim()) {
+			this.setError("请先选中文本");
+			new Notice("请先选中文本");
 			return;
 		}
 
@@ -509,8 +527,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		from: EditorPosition;
 		to: EditorPosition;
 	} | null {
-		const view = this.getActiveMarkdownView();
-		if (!view) {
+		const info = this.getActiveMarkdownInfo();
+		if (!info?.editor) {
 			this.setError("No active Markdown editor.");
 			new Notice("No active Markdown editor.");
 			return null;
@@ -522,15 +540,15 @@ export class FormatAssistantSidebarView extends ItemView {
 			return null;
 		}
 
-		if (this.selectionContext.filePath && view.file?.path !== this.selectionContext.filePath) {
+		if (this.selectionContext.filePath && info.file?.path !== this.selectionContext.filePath) {
 			this.setError("Active file changed. Please refresh selection.");
 			new Notice("Active file changed. Please refresh selection.");
 			return null;
 		}
 
-		const currentSelection = view.editor.getSelection();
-		const currentFrom = view.editor.getCursor("from");
-		const currentTo = view.editor.getCursor("to");
+		const currentSelection = info.editor.getSelection();
+		const currentFrom = info.editor.getCursor("from");
+		const currentTo = info.editor.getCursor("to");
 		if (!currentSelection.trim()) {
 			this.setError("Current editor has no selection. Please refresh selection.");
 			new Notice("Current editor has no selection. Please refresh selection.");
@@ -548,7 +566,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		return {
-			editor: view.editor,
+			editor: info.editor,
 			from: currentFrom,
 			to: currentTo
 		};
@@ -558,6 +576,63 @@ export class FormatAssistantSidebarView extends ItemView {
 		return this.app.workspace.getActiveViewOfType(MarkdownView);
 	}
 
+	private captureCurrentSelection(showNotice: boolean): boolean {
+		const info = this.getActiveMarkdownInfo();
+		if (!info?.editor) {
+			this.currentSelection = null;
+			this.selectionContext = null;
+			this.setError("请先切换到 Markdown 编辑器");
+			if (showNotice) {
+				new Notice("请先切换到 Markdown 编辑器");
+			}
+			return false;
+		}
+
+		const preview = getActiveSelectionPreview(info);
+		this.currentSelection = preview;
+
+		if (!preview.text.trim()) {
+			this.selectionContext = null;
+			this.statusText = "请先选择文本";
+			this.errorText = "";
+			this.render();
+			if (showNotice) {
+				new Notice("请先选中文本");
+			}
+			return false;
+		}
+
+		this.setSelectionContextFromPreview(preview);
+		this.statusText = `Captured ${describeSelection(preview.text)}.`;
+		this.errorText = "";
+		this.render();
+		return true;
+	}
+
+	private getActiveMarkdownInfo(): MarkdownFileInfo | null {
+		const activeEditor = this.app.workspace.activeEditor;
+		if (activeEditor?.editor) {
+			return activeEditor;
+		}
+
+		return this.getActiveMarkdownView();
+	}
+
+	private setSelectionContextFromPreview(preview: ActiveSelectionPreview): void {
+		if (!preview.from || !preview.to) {
+			this.selectionContext = null;
+			return;
+		}
+
+		this.selectionContext = {
+			text: preview.text,
+			filePath: preview.filePath,
+			fileName: preview.fileName,
+			from: preview.from,
+			to: preview.to
+		};
+	}
+
 	private setError(message: string): void {
 		this.errorText = message;
 		this.statusText = "";
@@ -565,11 +640,7 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private describeText(text: string): string {
-		const chars = text.length;
-		const words = text.trim()
-			? text.trim().split(/\s+/).filter(Boolean).length
-			: 0;
-		return `${words} words / ${chars} chars`;
+		return describeSelection(text);
 	}
 
 	private openSettings(): void {

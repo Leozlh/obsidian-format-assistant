@@ -492,15 +492,21 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
 var import_obsidian3 = require("obsidian");
 
 // src/sidebar-context.ts
-function getActiveSelectionPreview(view) {
-  var _a, _b, _c;
-  const text = (_a = view == null ? void 0 : view.editor.getSelection()) != null ? _a : "";
+function getActiveSelectionPreview(info) {
+  var _a, _b, _c, _d, _e, _f;
+  const text = (_b = (_a = info == null ? void 0 : info.editor) == null ? void 0 : _a.getSelection()) != null ? _b : "";
   return {
-    fileName: (_c = (_b = view == null ? void 0 : view.file) == null ? void 0 : _b.basename) != null ? _c : "No active Markdown file",
+    fileName: (_d = (_c = info == null ? void 0 : info.file) == null ? void 0 : _c.basename) != null ? _d : "No active Markdown file",
+    filePath: (_f = (_e = info == null ? void 0 : info.file) == null ? void 0 : _e.path) != null ? _f : null,
     text,
     wordCount: countWords(text),
-    characterCount: text.length
+    characterCount: text.length,
+    from: (info == null ? void 0 : info.editor) ? info.editor.getCursor("from") : null,
+    to: (info == null ? void 0 : info.editor) ? info.editor.getCursor("to") : null
   };
+}
+function describeSelection(text) {
+  return `${text.length} chars / ${countWords(text)} words`;
 }
 function countWords(text) {
   return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -512,6 +518,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.customInstruction = "";
+    this.currentSelection = null;
     this.selectionContext = null;
     this.outputText = "";
     this.statusText = "";
@@ -532,6 +539,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     return "sparkles";
   }
   async onOpen() {
+    this.captureCurrentSelection(false);
     this.render();
     this.refreshContextStatus();
     if (this.plugin.settings.autoUseSelectionOnSidebarOpen) {
@@ -571,19 +579,17 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     (_a = this.customInputEl) == null ? void 0 : _a.focus();
   }
   useCurrentSelection(showNotice = true) {
-    const view = this.getActiveMarkdownView();
-    if (!view) {
-      this.setError("No active Markdown editor.");
-      if (showNotice) {
-        new import_obsidian3.Notice("No active Markdown editor.");
-      }
+    if (!this.captureCurrentSelection(showNotice)) {
       return;
     }
-    this.setContextFromEditor(view.editor, view, showNotice);
+    if (showNotice) {
+      new import_obsidian3.Notice("Selection sent to Format Assistant.");
+    }
   }
   setContextFromEditor(editor, view, showNotice) {
     var _a, _b, _c, _d;
     const selectedText = editor.getSelection();
+    this.currentSelection = getActiveSelectionPreview(view != null ? view : this.app.workspace.activeEditor);
     if (!selectedText.trim()) {
       this.setError("Please select text first.");
       if (showNotice) {
@@ -620,15 +626,20 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     settingsButton.addEventListener("click", () => this.openSettings());
   }
   renderContextPreview(root) {
+    var _a;
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     const header = panel.createDiv({ cls: "format-assistant-section-header" });
     header.createEl("h3", { text: "Context Preview" });
-    const activePreview = getActiveSelectionPreview(this.getActiveMarkdownView());
+    const preview = (_a = this.currentSelection) != null ? _a : getActiveSelectionPreview(this.getActiveMarkdownInfo());
     header.createSpan({
       cls: "format-assistant-muted",
-      text: `${activePreview.wordCount} words / ${activePreview.characterCount} chars`
+      text: `\u5F53\u524D\u9009\u533A\uFF1A${preview.characterCount} chars / ${preview.wordCount} words`
     });
-    if (!activePreview.text.trim()) {
+    panel.createDiv({
+      cls: "format-assistant-muted",
+      text: "\u6253\u5F00\u4FA7\u680F\u540E\u8BF7\u70B9\u51FB Use current selection \u6216 Refresh selection \u6355\u83B7\u6700\u65B0\u9009\u533A\u3002"
+    });
+    if (!preview.text.trim()) {
       panel.createDiv({
         cls: "format-assistant-empty format-assistant-context-preview",
         text: "\u8BF7\u5148\u9009\u62E9\u6587\u672C"
@@ -637,18 +648,19 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     }
     panel.createEl("pre", {
       cls: "format-assistant-context-preview",
-      text: activePreview.text
+      text: preview.text
     });
   }
   renderContext(root) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Context" });
     const activeView = this.getActiveMarkdownView();
-    const activeSelection = (_a = activeView == null ? void 0 : activeView.editor.getSelection()) != null ? _a : "";
+    const activeInfo = this.getActiveMarkdownInfo();
+    const activeSelection = (_b = (_a = activeInfo == null ? void 0 : activeInfo.editor) == null ? void 0 : _a.getSelection()) != null ? _b : "";
     const rows = [
-      ["Current file", (_e = (_d = (_b = this.selectionContext) == null ? void 0 : _b.fileName) != null ? _d : (_c = activeView == null ? void 0 : activeView.file) == null ? void 0 : _c.basename) != null ? _e : "None"],
-      ["Current editor selection", activeSelection.trim() ? "Yes" : "No"],
+      ["Current file", (_j = (_i = (_g = (_e = (_c = this.currentSelection) == null ? void 0 : _c.fileName) != null ? _e : (_d = this.selectionContext) == null ? void 0 : _d.fileName) != null ? _g : (_f = activeInfo == null ? void 0 : activeInfo.file) == null ? void 0 : _f.basename) != null ? _i : (_h = activeView == null ? void 0 : activeView.file) == null ? void 0 : _h.basename) != null ? _j : "None"],
+      ["Current editor selection", ((_k = this.currentSelection) == null ? void 0 : _k.text.trim()) || activeSelection.trim() ? "Yes" : "No"],
       ["Captured selection", this.selectionContext ? this.describeText(this.selectionContext.text) : "None"],
       ["Mode", FORMAT_MODE_LABELS[this.mode]]
     ];
@@ -737,6 +749,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
     const clearButton = panel.createEl("button", { text: "Clear context" });
     clearButton.addEventListener("click", () => {
+      this.currentSelection = null;
       this.selectionContext = null;
       this.statusText = "Context cleared.";
       this.errorText = "";
@@ -820,10 +833,16 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     }
   }
   async generate() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     if (!((_a = this.selectionContext) == null ? void 0 : _a.text.trim())) {
-      this.setError("Please select text first.");
-      new import_obsidian3.Notice("Please select text first.");
+      this.captureCurrentSelection(false);
+      if ((_b = this.currentSelection) == null ? void 0 : _b.text.trim()) {
+        this.setSelectionContextFromPreview(this.currentSelection);
+      }
+    }
+    if (!((_c = this.selectionContext) == null ? void 0 : _c.text.trim())) {
+      this.setError("\u8BF7\u5148\u9009\u4E2D\u6587\u672C");
+      new import_obsidian3.Notice("\u8BF7\u5148\u9009\u4E2D\u6587\u672C");
       return;
     }
     const validationError = this.plugin.validateApiSettings();
@@ -841,7 +860,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
         this.mode,
         this.selectionContext.text,
         this.customInstruction,
-        (_b = this.selectionContext.fileName) != null ? _b : void 0
+        (_d = this.selectionContext.fileName) != null ? _d : void 0
       );
       this.statusText = `Generated ${this.describeText(this.outputText)}.`;
     } catch (error) {
@@ -916,8 +935,8 @@ ${this.outputText}`,
   }
   getVerifiedSelectionState() {
     var _a;
-    const view = this.getActiveMarkdownView();
-    if (!view) {
+    const info = this.getActiveMarkdownInfo();
+    if (!(info == null ? void 0 : info.editor)) {
       this.setError("No active Markdown editor.");
       new import_obsidian3.Notice("No active Markdown editor.");
       return null;
@@ -927,14 +946,14 @@ ${this.outputText}`,
       new import_obsidian3.Notice("Please capture a selection first.");
       return null;
     }
-    if (this.selectionContext.filePath && ((_a = view.file) == null ? void 0 : _a.path) !== this.selectionContext.filePath) {
+    if (this.selectionContext.filePath && ((_a = info.file) == null ? void 0 : _a.path) !== this.selectionContext.filePath) {
       this.setError("Active file changed. Please refresh selection.");
       new import_obsidian3.Notice("Active file changed. Please refresh selection.");
       return null;
     }
-    const currentSelection = view.editor.getSelection();
-    const currentFrom = view.editor.getCursor("from");
-    const currentTo = view.editor.getCursor("to");
+    const currentSelection = info.editor.getSelection();
+    const currentFrom = info.editor.getCursor("from");
+    const currentTo = info.editor.getCursor("to");
     if (!currentSelection.trim()) {
       this.setError("Current editor has no selection. Please refresh selection.");
       new import_obsidian3.Notice("Current editor has no selection. Please refresh selection.");
@@ -946,7 +965,7 @@ ${this.outputText}`,
       return null;
     }
     return {
-      editor: view.editor,
+      editor: info.editor,
       from: currentFrom,
       to: currentTo
     };
@@ -954,15 +973,62 @@ ${this.outputText}`,
   getActiveMarkdownView() {
     return this.app.workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
   }
+  captureCurrentSelection(showNotice) {
+    const info = this.getActiveMarkdownInfo();
+    if (!(info == null ? void 0 : info.editor)) {
+      this.currentSelection = null;
+      this.selectionContext = null;
+      this.setError("\u8BF7\u5148\u5207\u6362\u5230 Markdown \u7F16\u8F91\u5668");
+      if (showNotice) {
+        new import_obsidian3.Notice("\u8BF7\u5148\u5207\u6362\u5230 Markdown \u7F16\u8F91\u5668");
+      }
+      return false;
+    }
+    const preview = getActiveSelectionPreview(info);
+    this.currentSelection = preview;
+    if (!preview.text.trim()) {
+      this.selectionContext = null;
+      this.statusText = "\u8BF7\u5148\u9009\u62E9\u6587\u672C";
+      this.errorText = "";
+      this.render();
+      if (showNotice) {
+        new import_obsidian3.Notice("\u8BF7\u5148\u9009\u4E2D\u6587\u672C");
+      }
+      return false;
+    }
+    this.setSelectionContextFromPreview(preview);
+    this.statusText = `Captured ${describeSelection(preview.text)}.`;
+    this.errorText = "";
+    this.render();
+    return true;
+  }
+  getActiveMarkdownInfo() {
+    const activeEditor = this.app.workspace.activeEditor;
+    if (activeEditor == null ? void 0 : activeEditor.editor) {
+      return activeEditor;
+    }
+    return this.getActiveMarkdownView();
+  }
+  setSelectionContextFromPreview(preview) {
+    if (!preview.from || !preview.to) {
+      this.selectionContext = null;
+      return;
+    }
+    this.selectionContext = {
+      text: preview.text,
+      filePath: preview.filePath,
+      fileName: preview.fileName,
+      from: preview.from,
+      to: preview.to
+    };
+  }
   setError(message) {
     this.errorText = message;
     this.statusText = "";
     this.render();
   }
   describeText(text) {
-    const chars = text.length;
-    const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
-    return `${words} words / ${chars} chars`;
+    return describeSelection(text);
   }
   openSettings() {
     var _a, _b;
