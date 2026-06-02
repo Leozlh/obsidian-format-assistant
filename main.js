@@ -280,6 +280,34 @@ var ConfirmModal = class extends import_obsidian.Modal {
 
 // src/settings.ts
 var import_obsidian2 = require("obsidian");
+
+// src/sidebar-presets.ts
+var MAX_PROMPT_PRESETS = 5;
+function createPromptPreset(content) {
+  const normalized = content.trim();
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: toPresetName(normalized),
+    content: normalized
+  };
+}
+function normalizePromptPresets(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item) => {
+    return Boolean(
+      item && typeof item.id === "string" && typeof item.name === "string" && typeof item.content === "string" && item.content.trim()
+    );
+  }).slice(0, MAX_PROMPT_PRESETS);
+}
+function toPresetName(content) {
+  var _a, _b;
+  const firstLine = (_b = (_a = content.split(/\r?\n/).find((line) => line.trim())) == null ? void 0 : _a.trim()) != null ? _b : "Prompt";
+  return firstLine.length > 28 ? `${firstLine.slice(0, 28)}...` : firstLine;
+}
+
+// src/settings.ts
 var DEFAULT_SYSTEM_PROMPT = `\u4F60\u662F Obsidian Markdown \u7B14\u8BB0\u6574\u7406\u52A9\u624B\u3002
 \u89C4\u5219\uFF1A
 1. \u53EA\u8F93\u51FA\u6574\u7406\u540E\u7684 Markdown\u3002
@@ -304,8 +332,17 @@ var DEFAULT_SETTINGS = {
   sidebarDefaultMode: "obsidian-markdown",
   autoUseSelectionOnSidebarOpen: false,
   includeCurrentFileNameInPrompt: true,
-  includeFullCurrentNote: false
+  includeFullCurrentNote: false,
+  promptPresets: []
 };
+function normalizeSettings(data) {
+  const raw = typeof data === "object" && data !== null ? data : {};
+  return {
+    ...DEFAULT_SETTINGS,
+    ...raw,
+    promptPresets: normalizePromptPresets(raw.promptPresets)
+  };
+}
 function validateApiSettings(settings) {
   if (!settings.baseUrl.trim()) {
     return "API Base URL is required.";
@@ -453,6 +490,23 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
 
 // src/sidebar-view.ts
 var import_obsidian3 = require("obsidian");
+
+// src/sidebar-context.ts
+function getActiveSelectionPreview(view) {
+  var _a, _b, _c;
+  const text = (_a = view == null ? void 0 : view.editor.getSelection()) != null ? _a : "";
+  return {
+    fileName: (_c = (_b = view == null ? void 0 : view.file) == null ? void 0 : _b.basename) != null ? _c : "No active Markdown file",
+    text,
+    wordCount: countWords(text),
+    characterCount: text.length
+  };
+}
+function countWords(text) {
+  return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+}
+
+// src/sidebar-view.ts
 var FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
@@ -464,6 +518,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.errorText = "";
     this.loading = false;
     this.customInputEl = null;
+    this.selectedPresetId = "";
     this.plugin = plugin;
     this.mode = plugin.settings.sidebarDefaultMode;
   }
@@ -491,9 +546,11 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     root.empty();
     root.addClass("format-assistant-sidebar");
     this.renderHeader(root);
+    this.renderContextPreview(root);
     this.renderContext(root);
     this.renderModeSelector(root);
     this.renderInput(root);
+    this.renderPromptPresets(root);
     this.renderSelectionControls(root);
     this.renderActions(root);
     this.renderOutput(root);
@@ -562,6 +619,27 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     });
     settingsButton.addEventListener("click", () => this.openSettings());
   }
+  renderContextPreview(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel" });
+    const header = panel.createDiv({ cls: "format-assistant-section-header" });
+    header.createEl("h3", { text: "Context Preview" });
+    const activePreview = getActiveSelectionPreview(this.getActiveMarkdownView());
+    header.createSpan({
+      cls: "format-assistant-muted",
+      text: `${activePreview.wordCount} words / ${activePreview.characterCount} chars`
+    });
+    if (!activePreview.text.trim()) {
+      panel.createDiv({
+        cls: "format-assistant-empty format-assistant-context-preview",
+        text: "\u8BF7\u5148\u9009\u62E9\u6587\u672C"
+      });
+      return;
+    }
+    panel.createEl("pre", {
+      cls: "format-assistant-context-preview",
+      text: activePreview.text
+    });
+  }
   renderContext(root) {
     var _a, _b, _c, _d, _e;
     const panel = root.createDiv({ cls: "format-assistant-panel" });
@@ -611,6 +689,44 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.customInputEl.addEventListener("input", () => {
       var _a, _b;
       this.customInstruction = (_b = (_a = this.customInputEl) == null ? void 0 : _a.value) != null ? _b : "";
+    });
+  }
+  renderPromptPresets(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel" });
+    const header = panel.createDiv({ cls: "format-assistant-section-header" });
+    header.createEl("h3", { text: "Prompt Presets" });
+    header.createSpan({
+      cls: "format-assistant-muted",
+      text: `${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS}`
+    });
+    const select = panel.createEl("select", { cls: "format-assistant-select" });
+    select.createEl("option", {
+      text: this.plugin.settings.promptPresets.length ? "Select a preset" : "No presets saved",
+      value: ""
+    });
+    for (const preset of this.plugin.settings.promptPresets) {
+      const option = select.createEl("option", {
+        text: preset.name,
+        value: preset.id
+      });
+      option.title = preset.content;
+      option.selected = preset.id === this.selectedPresetId;
+    }
+    select.addEventListener("change", () => {
+      this.selectedPresetId = select.value;
+    });
+    const buttons = panel.createDiv({ cls: "format-assistant-button-row" });
+    const addButton = buttons.createEl("button", { text: "Add current input as preset" });
+    addButton.addEventListener("click", () => {
+      void this.addCurrentInputAsPreset();
+    });
+    const selectButton = buttons.createEl("button", { text: "Select preset" });
+    selectButton.disabled = !this.plugin.settings.promptPresets.length;
+    selectButton.addEventListener("click", () => this.applySelectedPreset());
+    const removeButton = buttons.createEl("button", { text: "Remove preset" });
+    removeButton.disabled = !this.plugin.settings.promptPresets.length;
+    removeButton.addEventListener("click", () => {
+      void this.removeSelectedPreset();
     });
   }
   renderSelectionControls(root) {
@@ -854,6 +970,65 @@ ${this.outputText}`,
     (_a = appWithSettings.setting) == null ? void 0 : _a.open();
     (_b = appWithSettings.setting) == null ? void 0 : _b.openTabById(this.plugin.manifest.id);
   }
+  async addCurrentInputAsPreset() {
+    const content = this.customInstruction.trim();
+    if (!content) {
+      this.setError("Enter an instruction before saving a preset.");
+      new import_obsidian3.Notice("Enter an instruction before saving a preset.");
+      return;
+    }
+    if (this.plugin.settings.promptPresets.length >= MAX_PROMPT_PRESETS) {
+      this.setError(`Prompt presets are limited to ${MAX_PROMPT_PRESETS}.`);
+      new import_obsidian3.Notice(`Prompt presets are limited to ${MAX_PROMPT_PRESETS}.`);
+      return;
+    }
+    const preset = createPromptPreset(content);
+    this.plugin.settings.promptPresets = [
+      ...this.plugin.settings.promptPresets,
+      preset
+    ];
+    this.selectedPresetId = preset.id;
+    await this.plugin.saveSettings();
+    this.statusText = "Prompt preset saved.";
+    this.errorText = "";
+    this.render();
+    new import_obsidian3.Notice("Prompt preset saved.");
+  }
+  applySelectedPreset() {
+    const preset = this.getSelectedPreset();
+    if (!preset) {
+      this.setError("Select a prompt preset first.");
+      new import_obsidian3.Notice("Select a prompt preset first.");
+      return;
+    }
+    this.customInstruction = preset.content;
+    this.statusText = "Prompt preset loaded into input.";
+    this.errorText = "";
+    this.render();
+    this.focusInput();
+  }
+  async removeSelectedPreset() {
+    const preset = this.getSelectedPreset();
+    if (!preset) {
+      this.setError("Select a prompt preset first.");
+      new import_obsidian3.Notice("Select a prompt preset first.");
+      return;
+    }
+    this.plugin.settings.promptPresets = this.plugin.settings.promptPresets.filter(
+      (item) => item.id !== preset.id
+    );
+    this.selectedPresetId = "";
+    await this.plugin.saveSettings();
+    this.statusText = "Prompt preset removed.";
+    this.errorText = "";
+    this.render();
+    new import_obsidian3.Notice("Prompt preset removed.");
+  }
+  getSelectedPreset() {
+    return this.plugin.settings.promptPresets.find(
+      (preset) => preset.id === this.selectedPresetId
+    );
+  }
 };
 function positionsEqual(left, right) {
   return left.line === right.line && left.ch === right.ch;
@@ -910,7 +1085,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     this.app.workspace.detachLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE);
   }
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = normalizeSettings(await this.loadData());
   }
   async saveSettings() {
     await this.saveData(this.settings);

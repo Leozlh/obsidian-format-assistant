@@ -9,8 +9,8 @@ import { callChatCompletions } from "./api";
 import { FORMAT_TASKS, type FormatMode } from "./prompts";
 import { PreviewModal } from "./preview-modal";
 import {
-	DEFAULT_SETTINGS,
 	FormatAssistantSettingTab,
+	normalizeSettings,
 	type FormatAssistantSettings,
 	validateApiSettings
 } from "./settings";
@@ -80,7 +80,7 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = normalizeSettings(await this.loadData());
 	}
 
 	async saveSettings() {

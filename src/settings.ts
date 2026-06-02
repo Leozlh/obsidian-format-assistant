@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type FormatAssistantPlugin from "./main";
 import { FORMAT_MODE_LABELS, FORMAT_MODES, type FormatMode } from "./prompts";
+import { normalizePromptPresets, type PromptPreset } from "./sidebar-presets";
 
 export type ProviderType = "openai-compatible";
 
@@ -18,6 +19,7 @@ export interface FormatAssistantSettings {
 	autoUseSelectionOnSidebarOpen: boolean;
 	includeCurrentFileNameInPrompt: boolean;
 	includeFullCurrentNote: boolean;
+	promptPresets: PromptPreset[];
 }
 
 export const DEFAULT_SYSTEM_PROMPT = `你是 Obsidian Markdown 笔记整理助手。
@@ -45,8 +47,21 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	sidebarDefaultMode: "obsidian-markdown",
 	autoUseSelectionOnSidebarOpen: false,
 	includeCurrentFileNameInPrompt: true,
-	includeFullCurrentNote: false
+	includeFullCurrentNote: false,
+	promptPresets: []
 };
+
+export function normalizeSettings(data: unknown): FormatAssistantSettings {
+	const raw = typeof data === "object" && data !== null
+		? data as Partial<FormatAssistantSettings>
+		: {};
+
+	return {
+		...DEFAULT_SETTINGS,
+		...raw,
+		promptPresets: normalizePromptPresets(raw.promptPresets)
+	};
+}
 
 export function validateApiSettings(settings: FormatAssistantSettings): string | null {
 	if (!settings.baseUrl.trim()) {

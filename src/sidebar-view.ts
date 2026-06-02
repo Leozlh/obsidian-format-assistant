@@ -13,6 +13,11 @@ import {
 	type FormatMode
 } from "./prompts";
 import { ConfirmModal } from "./preview-modal";
+import { getActiveSelectionPreview } from "./sidebar-context";
+import {
+	createPromptPreset,
+	MAX_PROMPT_PRESETS
+} from "./sidebar-presets";
 
 export const FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 
@@ -34,6 +39,7 @@ export class FormatAssistantSidebarView extends ItemView {
 	private errorText = "";
 	private loading = false;
 	private customInputEl: HTMLTextAreaElement | null = null;
+	private selectedPresetId = "";
 
 	constructor(leaf: WorkspaceLeaf, plugin: FormatAssistantPlugin) {
 		super(leaf);
@@ -71,9 +77,11 @@ export class FormatAssistantSidebarView extends ItemView {
 		root.addClass("format-assistant-sidebar");
 
 		this.renderHeader(root);
+		this.renderContextPreview(root);
 		this.renderContext(root);
 		this.renderModeSelector(root);
 		this.renderInput(root);
+		this.renderPromptPresets(root);
 		this.renderSelectionControls(root);
 		this.renderActions(root);
 		this.renderOutput(root);
@@ -153,6 +161,31 @@ export class FormatAssistantSidebarView extends ItemView {
 		settingsButton.addEventListener("click", () => this.openSettings());
 	}
 
+	private renderContextPreview(root: HTMLElement): void {
+		const panel = root.createDiv({ cls: "format-assistant-panel" });
+		const header = panel.createDiv({ cls: "format-assistant-section-header" });
+		header.createEl("h3", { text: "Context Preview" });
+
+		const activePreview = getActiveSelectionPreview(this.getActiveMarkdownView());
+		header.createSpan({
+			cls: "format-assistant-muted",
+			text: `${activePreview.wordCount} words / ${activePreview.characterCount} chars`
+		});
+
+		if (!activePreview.text.trim()) {
+			panel.createDiv({
+				cls: "format-assistant-empty format-assistant-context-preview",
+				text: "请先选择文本"
+			});
+			return;
+		}
+
+		panel.createEl("pre", {
+			cls: "format-assistant-context-preview",
+			text: activePreview.text
+		});
+	}
+
 	private renderContext(root: HTMLElement): void {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		panel.createEl("h3", { text: "Context" });
@@ -207,6 +240,52 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.customInputEl.value = this.customInstruction;
 		this.customInputEl.addEventListener("input", () => {
 			this.customInstruction = this.customInputEl?.value ?? "";
+		});
+	}
+
+	private renderPromptPresets(root: HTMLElement): void {
+		const panel = root.createDiv({ cls: "format-assistant-panel" });
+		const header = panel.createDiv({ cls: "format-assistant-section-header" });
+		header.createEl("h3", { text: "Prompt Presets" });
+		header.createSpan({
+			cls: "format-assistant-muted",
+			text: `${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS}`
+		});
+
+		const select = panel.createEl("select", { cls: "format-assistant-select" });
+		select.createEl("option", {
+			text: this.plugin.settings.promptPresets.length ? "Select a preset" : "No presets saved",
+			value: ""
+		});
+
+		for (const preset of this.plugin.settings.promptPresets) {
+			const option = select.createEl("option", {
+				text: preset.name,
+				value: preset.id
+			});
+			option.title = preset.content;
+			option.selected = preset.id === this.selectedPresetId;
+		}
+
+		select.addEventListener("change", () => {
+			this.selectedPresetId = select.value;
+		});
+
+		const buttons = panel.createDiv({ cls: "format-assistant-button-row" });
+
+		const addButton = buttons.createEl("button", { text: "Add current input as preset" });
+		addButton.addEventListener("click", () => {
+			void this.addCurrentInputAsPreset();
+		});
+
+		const selectButton = buttons.createEl("button", { text: "Select preset" });
+		selectButton.disabled = !this.plugin.settings.promptPresets.length;
+		selectButton.addEventListener("click", () => this.applySelectedPreset());
+
+		const removeButton = buttons.createEl("button", { text: "Remove preset" });
+		removeButton.disabled = !this.plugin.settings.promptPresets.length;
+		removeButton.addEventListener("click", () => {
+			void this.removeSelectedPreset();
 		});
 	}
 
@@ -503,6 +582,73 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		appWithSettings.setting?.open();
 		appWithSettings.setting?.openTabById(this.plugin.manifest.id);
+	}
+
+	private async addCurrentInputAsPreset(): Promise<void> {
+		const content = this.customInstruction.trim();
+		if (!content) {
+			this.setError("Enter an instruction before saving a preset.");
+			new Notice("Enter an instruction before saving a preset.");
+			return;
+		}
+
+		if (this.plugin.settings.promptPresets.length >= MAX_PROMPT_PRESETS) {
+			this.setError(`Prompt presets are limited to ${MAX_PROMPT_PRESETS}.`);
+			new Notice(`Prompt presets are limited to ${MAX_PROMPT_PRESETS}.`);
+			return;
+		}
+
+		const preset = createPromptPreset(content);
+		this.plugin.settings.promptPresets = [
+			...this.plugin.settings.promptPresets,
+			preset
+		];
+		this.selectedPresetId = preset.id;
+		await this.plugin.saveSettings();
+		this.statusText = "Prompt preset saved.";
+		this.errorText = "";
+		this.render();
+		new Notice("Prompt preset saved.");
+	}
+
+	private applySelectedPreset(): void {
+		const preset = this.getSelectedPreset();
+		if (!preset) {
+			this.setError("Select a prompt preset first.");
+			new Notice("Select a prompt preset first.");
+			return;
+		}
+
+		this.customInstruction = preset.content;
+		this.statusText = "Prompt preset loaded into input.";
+		this.errorText = "";
+		this.render();
+		this.focusInput();
+	}
+
+	private async removeSelectedPreset(): Promise<void> {
+		const preset = this.getSelectedPreset();
+		if (!preset) {
+			this.setError("Select a prompt preset first.");
+			new Notice("Select a prompt preset first.");
+			return;
+		}
+
+		this.plugin.settings.promptPresets = this.plugin.settings.promptPresets.filter(
+			(item) => item.id !== preset.id
+		);
+		this.selectedPresetId = "";
+		await this.plugin.saveSettings();
+		this.statusText = "Prompt preset removed.";
+		this.errorText = "";
+		this.render();
+		new Notice("Prompt preset removed.");
+	}
+
+	private getSelectedPreset() {
+		return this.plugin.settings.promptPresets.find(
+			(preset) => preset.id === this.selectedPresetId
+		);
 	}
 }
 
