@@ -20,236 +20,187 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => FormatAssistantPlugin
+  default: () => FormatAssistantPlugin,
+  getActiveMarkdownView: () => getActiveMarkdownView,
+  getOrCreateRightLeaf: () => getOrCreateRightLeaf
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian = require("obsidian");
-var DEFAULT_SYSTEM_PROMPT = `\u4F60\u662F Obsidian Markdown \u7B14\u8BB0\u6574\u7406\u52A9\u624B\u3002
-\u89C4\u5219\uFF1A
-1. \u53EA\u8F93\u51FA\u6574\u7406\u540E\u7684 Markdown\u3002
-2. \u4E0D\u8F93\u51FA bash\u3001shell\u3001\u7EC8\u7AEF\u547D\u4EE4\u3002
-3. \u4E0D\u89E3\u91CA\u8FC7\u7A0B\u3002
-4. \u4E0D\u8F93\u51FA\u957F\u7BC7\u80CC\u666F\u3002
-5. \u4FDD\u7559\u539F\u6587\u542B\u4E49\uFF0C\u4E0D\u4E71\u6269\u5199\u3002
-6. \u4FDD\u6301 Obsidian wikilink\u3001tag\u3001callout\u3001frontmatter \u517C\u5BB9\u3002
-7. \u516C\u5F0F\u5728 Markdown \u4E2D\u4F7F\u7528 $...$ \u6216 $$...$$\u3002
-8. \u9ED8\u8BA4\u4E2D\u6587\u8F93\u51FA\u3002
-9. \u5982\u679C\u8F93\u5165\u5185\u5BB9\u660E\u663E\u4E0D\u8DB3\uFF0C\u53EA\u505A\u683C\u5F0F\u6574\u7406\uFF0C\u4E0D\u8865\u9020\u5185\u5BB9\u3002`;
-var DEFAULT_SETTINGS = {
-  baseUrl: "https://api.openai.com/v1",
-  apiKey: "",
-  model: "gpt-4o-mini",
-  maxTokens: 1200,
-  temperature: 0.2,
-  providerType: "openai-compatible",
-  systemPrompt: DEFAULT_SYSTEM_PROMPT,
-  previewBeforeReplace: true,
-  timeoutSeconds: 30
+var import_obsidian4 = require("obsidian");
+
+// src/prompts.ts
+var FORMAT_MODES = [
+  "obsidian-markdown",
+  "course-note",
+  "review-card",
+  "wiki-candidates",
+  "concise",
+  "custom"
+];
+var FORMAT_MODE_LABELS = {
+  "obsidian-markdown": "Obsidian Markdown",
+  "course-note": "Course Note",
+  "review-card": "Review Card",
+  "wiki-candidates": "Wiki Candidates",
+  concise: "Concise",
+  custom: "Custom Instruction"
 };
 var FORMAT_TASKS = [
   {
     id: "format-selection-as-obsidian-markdown",
     name: "Format selection as Obsidian Markdown",
-    taskPrompt: "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u6E05\u6670\u3001\u89C4\u8303\u3001\u9002\u5408 Obsidian \u7684 Markdown\u3002\u4FDD\u7559\u539F\u610F\u3001\u516C\u5F0F\u3001\u6761\u4EF6\u3001wikilink\u3001tag\u3001callout \u548C frontmatter\u3002"
+    mode: "obsidian-markdown"
   },
   {
     id: "format-selection-as-course-note",
     name: "Format selection as course note",
-    taskPrompt: `\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u8BFE\u7A0B\u7B14\u8BB0\uFF0C\u4E25\u683C\u4F7F\u7528\u4EE5\u4E0B Markdown \u7ED3\u6784\uFF1A
-## \u6838\u5FC3\u6982\u5FF5
-## \u516C\u5F0F\u4E0E\u6761\u4EF6
-## \u5178\u578B\u9898\u5165\u53E3
-## \u6613\u9519\u70B9
-## \u5F85\u8FFD\u95EE\u95EE\u9898`
+    mode: "course-note"
   },
   {
     id: "compress-selection-into-review-card",
     name: "Compress selection into review card",
-    taskPrompt: `\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u538B\u7F29\u4E3A Obsidian callout \u590D\u4E60\u5361\u7247\uFF0C\u4E25\u683C\u4F7F\u7528\u4EE5\u4E0B\u7ED3\u6784\uFF1A
-> [!summary] \u590D\u4E60\u5361\u7247
-> - \u6838\u5FC3\u7ED3\u8BBA\uFF1A
-> - \u9002\u7528\u6761\u4EF6\uFF1A
-> - \u5178\u578B\u9898\u578B\uFF1A
-> - \u6613\u9519\u70B9\uFF1A`
+    mode: "review-card"
   },
   {
     id: "generate-wiki-candidates",
     name: "Generate Wiki candidates",
-    taskPrompt: `\u8BF7\u6839\u636E\u8F93\u5165\u6587\u672C\u751F\u6210\u6700\u591A 10 \u6761 Wiki \u5019\u9009\u6761\u76EE\uFF0C\u4E25\u683C\u8F93\u51FA Markdown \u8868\u683C\uFF1A
-| \u7C7B\u578B | \u5019\u9009\u6807\u9898 | \u6765\u6E90\u4F9D\u636E | \u4E3A\u4EC0\u4E48\u503C\u5F97\u6C89\u6DC0 |
-|---|---|---|---|
-
-\u7C7B\u578B\u53EA\u80FD\u4ECE\u4EE5\u4E0B\u9009\u9879\u4E2D\u9009\u62E9\uFF1A
-Concept, Formula, Method, Theorem, Problem, Comparison, Open Question`
+    mode: "wiki-candidates"
   },
   {
     id: "make-selection-concise",
     name: "Make selection concise",
-    taskPrompt: "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u7CBE\u7B80\u4E3A\u66F4\u77ED\u3001\u66F4\u6E05\u695A\u7684 Markdown\uFF0C\u4E0D\u4E22\u5931\u6838\u5FC3\u516C\u5F0F\u3001\u9002\u7528\u6761\u4EF6\u3001\u5B9A\u4E49\u3001\u9650\u5236\u548C\u5173\u952E\u7ED3\u8BBA\u3002"
+    mode: "concise"
   }
 ];
-var FormatAssistantPlugin = class extends import_obsidian.Plugin {
-  async onload() {
-    await this.loadSettings();
-    for (const task of FORMAT_TASKS) {
-      this.addCommand({
-        id: task.id,
-        name: task.name,
-        editorCallback: (editor) => {
-          void this.formatSelection(editor, task);
-        }
-      });
-    }
-    this.addSettingTab(new FormatAssistantSettingTab(this.app, this));
-  }
-  async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
-  async saveSettings() {
-    await this.saveData(this.settings);
-  }
-  async formatSelection(editor, task) {
-    const selection = editor.getSelection();
-    const selectionStart = editor.getCursor("from");
-    const selectionEnd = editor.getCursor("to");
-    if (!selection.trim()) {
-      new import_obsidian.Notice("Please select text before running Format Assistant.");
-      return;
-    }
-    const validationError = this.validateSettings();
-    if (validationError) {
-      new import_obsidian.Notice(validationError);
-      return;
-    }
-    new import_obsidian.Notice("Formatting selection...");
-    try {
-      const result = await this.callChatCompletions(task.taskPrompt, selection);
-      new PreviewModal(this.app, {
-        originalText: selection,
-        resultText: result,
-        showOriginal: this.settings.previewBeforeReplace,
-        onReplace: () => {
-          editor.replaceRange(result, selectionStart, selectionEnd);
-          new import_obsidian.Notice("Selection replaced.");
-        }
-      }).open();
-    } catch (error) {
-      new import_obsidian.Notice(this.toUserError(error));
-    }
-  }
-  validateSettings() {
-    if (!this.settings.baseUrl.trim()) {
-      return "API Base URL is required.";
-    }
-    if (!this.settings.apiKey.trim()) {
-      return "API key is required.";
-    }
-    if (!this.settings.model.trim()) {
-      return "Model is required.";
-    }
-    if (this.settings.maxTokens < 1) {
-      return "Max Tokens must be greater than 0.";
-    }
-    if (this.settings.timeoutSeconds < 1) {
-      return "Timeout seconds must be greater than 0.";
-    }
-    return null;
-  }
-  async testConnection() {
-    const validationError = this.validateSettings();
-    if (validationError) {
-      throw new Error(validationError);
-    }
-    await this.callChatCompletions(
-      "\u8BF7\u53EA\u56DE\u590D\uFF1AOK",
-      "\u8FDE\u63A5\u6D4B\u8BD5\u3002\u8BF7\u53EA\u56DE\u590D OK\u3002"
-    );
-  }
-  async callChatCompletions(taskPrompt, selection) {
-    var _a, _b, _c;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(
-      () => controller.abort(),
-      this.settings.timeoutSeconds * 1e3
-    );
-    try {
-      const response = await fetch(this.chatCompletionsUrl(), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.settings.apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: this.settings.model,
-          messages: [
-            {
-              role: "system",
-              content: this.settings.systemPrompt
-            },
-            {
-              role: "user",
-              content: `${taskPrompt}
+var TASK_PROMPTS = {
+  "obsidian-markdown": "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u6E05\u6670\u3001\u89C4\u8303\u3001\u9002\u5408 Obsidian \u7684 Markdown\u3002\u4FDD\u7559\u539F\u610F\u3001\u516C\u5F0F\u3001\u6761\u4EF6\u3001wikilink\u3001tag\u3001callout \u548C frontmatter\u3002",
+  "course-note": `\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u8BFE\u7A0B\u7B14\u8BB0\uFF0C\u4E25\u683C\u4F7F\u7528\u4EE5\u4E0B Markdown \u7ED3\u6784\uFF1A
+## \u6838\u5FC3\u6982\u5FF5
+## \u516C\u5F0F\u4E0E\u6761\u4EF6
+## \u5178\u578B\u9898\u5165\u53E3
+## \u6613\u9519\u70B9
+## \u5F85\u8FFD\u95EE\u95EE\u9898`,
+  "review-card": `\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u538B\u7F29\u4E3A Obsidian callout \u590D\u4E60\u5361\u7247\uFF0C\u4E25\u683C\u4F7F\u7528\u4EE5\u4E0B\u7ED3\u6784\uFF1A
+> [!summary] \u590D\u4E60\u5361\u7247
+> - \u6838\u5FC3\u7ED3\u8BBA\uFF1A
+> - \u9002\u7528\u6761\u4EF6\uFF1A
+> - \u5178\u578B\u9898\u578B\uFF1A
+> - \u6613\u9519\u70B9\uFF1A`,
+  "wiki-candidates": `\u8BF7\u6839\u636E\u8F93\u5165\u6587\u672C\u751F\u6210\u6700\u591A 10 \u6761 Wiki \u5019\u9009\u6761\u76EE\uFF0C\u4E25\u683C\u8F93\u51FA Markdown \u8868\u683C\uFF1A
+| \u7C7B\u578B | \u5019\u9009\u6807\u9898 | \u6765\u6E90\u4F9D\u636E | \u4E3A\u4EC0\u4E48\u503C\u5F97\u6C89\u6DC0 |
+|---|---|---|---|
 
-\u8F93\u5165\u6587\u672C\uFF1A
-${selection}`
-            }
-          ],
-          temperature: this.settings.temperature,
-          max_tokens: this.settings.maxTokens
-        }),
-        signal: controller.signal
-      });
-      const text = await response.text();
-      const data = this.parseJsonResponse(text);
-      if (!response.ok) {
-        throw new Error(this.statusToMessage(response.status, data));
-      }
-      const content = (_c = (_b = (_a = data.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
-      if (!content || typeof content !== "string") {
-        throw new Error("API returned an unexpected response format.");
-      }
-      return content.trim();
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }
-  chatCompletionsUrl() {
-    return `${this.settings.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  }
-  parseJsonResponse(text) {
-    if (!text.trim()) {
-      return {};
-    }
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      throw new Error("API returned invalid JSON.");
-    }
-  }
-  statusToMessage(status, data) {
-    var _a;
-    const apiMessage = (_a = data.error) == null ? void 0 : _a.message;
-    if (status === 401 || status === 403) {
-      return "API authentication failed. Check your API key and access permissions.";
-    }
-    if (status === 429) {
-      return "API rate limit reached. Please wait and try again.";
-    }
-    if (status >= 500) {
-      return "API server error. Please try again later.";
-    }
-    return apiMessage ? `API request failed: ${apiMessage}` : `API request failed with status ${status}.`;
-  }
-  toUserError(error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return "API request timed out.";
-    }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return "Formatting failed.";
-  }
+\u7C7B\u578B\u53EA\u80FD\u4ECE\u4EE5\u4E0B\u9009\u9879\u4E2D\u9009\u62E9\uFF1A
+Concept, Formula, Method, Theorem, Problem, Comparison, Open Question`,
+  concise: "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u7CBE\u7B80\u4E3A\u66F4\u77ED\u3001\u66F4\u6E05\u695A\u7684 Markdown\uFF0C\u4E0D\u4E22\u5931\u6838\u5FC3\u516C\u5F0F\u3001\u9002\u7528\u6761\u4EF6\u3001\u5B9A\u4E49\u3001\u9650\u5236\u548C\u5173\u952E\u7ED3\u8BBA\u3002",
+  custom: ""
 };
+function buildUserPrompt(options) {
+  var _a, _b;
+  const sections = [];
+  const taskPrompt = options.mode === "custom" ? buildCustomInstruction(options.customInstruction) : TASK_PROMPTS[options.mode];
+  sections.push(taskPrompt);
+  if (options.mode !== "custom" && ((_a = options.customInstruction) == null ? void 0 : _a.trim())) {
+    sections.push(`\u8865\u5145\u8981\u6C42\uFF1A
+${options.customInstruction.trim()}`);
+  }
+  if ((_b = options.currentFileName) == null ? void 0 : _b.trim()) {
+    sections.push(`\u5F53\u524D\u6587\u4EF6\u540D\uFF1A
+${options.currentFileName.trim()}`);
+  }
+  sections.push(`\u8F93\u5165\u6587\u672C\uFF1A
+${options.selectedText}`);
+  return sections.join("\n\n");
+}
+function buildMessages(systemPrompt, options) {
+  return [
+    {
+      role: "system",
+      content: systemPrompt
+    },
+    {
+      role: "user",
+      content: buildUserPrompt(options)
+    }
+  ];
+}
+function buildCustomInstruction(customInstruction) {
+  const instruction = (customInstruction == null ? void 0 : customInstruction.trim()) ? customInstruction.trim() : "\u8BF7\u6839\u636E\u8F93\u5165\u6587\u672C\u8FDB\u884C Markdown \u683C\u5F0F\u6574\u7406\u3002";
+  return `${instruction}
+
+\u5F3A\u5236\u89C4\u5219\uFF1A
+1. \u4E0D\u8F93\u51FA bash\u3002
+2. \u4E0D\u8F93\u51FA shell \u6216\u7EC8\u7AEF\u547D\u4EE4\u3002
+3. \u4E0D\u89E3\u91CA\u8FC7\u7A0B\u3002
+4. \u53EA\u8F93\u51FA\u6700\u7EC8 Markdown\u3002`;
+}
+
+// src/api.ts
+async function callChatCompletions(settings, promptOptions) {
+  var _a, _b, _c;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    settings.timeoutSeconds * 1e3
+  );
+  try {
+    const response = await fetch(chatCompletionsUrl(settings.baseUrl), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${settings.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: buildMessages(settings.systemPrompt, promptOptions),
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens
+      }),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    const data = parseJsonResponse(text);
+    if (!response.ok) {
+      throw new Error(statusToMessage(response.status, data));
+    }
+    const content = (_c = (_b = (_a = data.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
+    if (!content || typeof content !== "string") {
+      throw new Error("API returned an unexpected response format.");
+    }
+    return content.trim();
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+function chatCompletionsUrl(baseUrl) {
+  return `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+}
+function parseJsonResponse(text) {
+  if (!text.trim()) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error("API returned invalid JSON.");
+  }
+}
+function statusToMessage(status, data) {
+  var _a;
+  const apiMessage = (_a = data.error) == null ? void 0 : _a.message;
+  if (status === 401 || status === 403) {
+    return "API authentication failed. Check your API key and access permissions.";
+  }
+  if (status === 429) {
+    return "API rate limit reached. Please wait and try again.";
+  }
+  if (status >= 500) {
+    return "API server error. Please try again later.";
+  }
+  return apiMessage ? `API request failed: ${apiMessage}` : `API request failed with status ${status}.`;
+}
+
+// src/preview-modal.ts
+var import_obsidian = require("obsidian");
 var PreviewModal = class extends import_obsidian.Modal {
   constructor(app, options) {
     super(app);
@@ -297,7 +248,83 @@ var PreviewModal = class extends import_obsidian.Modal {
     });
   }
 };
-var FormatAssistantSettingTab = class extends import_obsidian.PluginSettingTab {
+var ConfirmModal = class extends import_obsidian.Modal {
+  constructor(app, options) {
+    super(app);
+    this.message = options.message;
+    this.confirmText = options.confirmText;
+    this.onConfirm = options.onConfirm;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("format-assistant-confirm");
+    contentEl.createEl("h2", { text: "Confirm change" });
+    contentEl.createEl("p", { text: this.message });
+    const actions = contentEl.createDiv({ cls: "format-assistant-preview__actions" });
+    const confirmButton = actions.createEl("button", {
+      text: this.confirmText,
+      cls: "mod-cta"
+    });
+    confirmButton.addEventListener("click", () => {
+      this.onConfirm();
+      this.close();
+    });
+    const cancelButton = actions.createEl("button", { text: "Cancel" });
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
+// src/settings.ts
+var import_obsidian2 = require("obsidian");
+var DEFAULT_SYSTEM_PROMPT = `\u4F60\u662F Obsidian Markdown \u7B14\u8BB0\u6574\u7406\u52A9\u624B\u3002
+\u89C4\u5219\uFF1A
+1. \u53EA\u8F93\u51FA\u6574\u7406\u540E\u7684 Markdown\u3002
+2. \u4E0D\u8F93\u51FA bash\u3001shell\u3001\u7EC8\u7AEF\u547D\u4EE4\u3002
+3. \u4E0D\u89E3\u91CA\u8FC7\u7A0B\u3002
+4. \u4E0D\u8F93\u51FA\u957F\u7BC7\u80CC\u666F\u3002
+5. \u4FDD\u7559\u539F\u6587\u542B\u4E49\uFF0C\u4E0D\u4E71\u6269\u5199\u3002
+6. \u4FDD\u6301 Obsidian wikilink\u3001tag\u3001callout\u3001frontmatter \u517C\u5BB9\u3002
+7. \u516C\u5F0F\u5728 Markdown \u4E2D\u4F7F\u7528 $...$ \u6216 $$...$$\u3002
+8. \u9ED8\u8BA4\u4E2D\u6587\u8F93\u51FA\u3002
+9. \u5982\u679C\u8F93\u5165\u5185\u5BB9\u660E\u663E\u4E0D\u8DB3\uFF0C\u53EA\u505A\u683C\u5F0F\u6574\u7406\uFF0C\u4E0D\u8865\u9020\u5185\u5BB9\u3002`;
+var DEFAULT_SETTINGS = {
+  baseUrl: "https://api.openai.com/v1",
+  apiKey: "",
+  model: "gpt-4o-mini",
+  maxTokens: 1200,
+  temperature: 0.2,
+  providerType: "openai-compatible",
+  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  previewBeforeReplace: true,
+  timeoutSeconds: 30,
+  sidebarDefaultMode: "obsidian-markdown",
+  autoUseSelectionOnSidebarOpen: false,
+  includeCurrentFileNameInPrompt: true,
+  includeFullCurrentNote: false
+};
+function validateApiSettings(settings) {
+  if (!settings.baseUrl.trim()) {
+    return "API Base URL is required.";
+  }
+  if (!settings.apiKey.trim()) {
+    return "API key is required.";
+  }
+  if (!settings.model.trim()) {
+    return "Model is required.";
+  }
+  if (settings.maxTokens < 1) {
+    return "Max Tokens must be greater than 0.";
+  }
+  if (settings.timeoutSeconds < 1) {
+    return "Timeout seconds must be greater than 0.";
+  }
+  return null;
+}
+var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -306,44 +333,45 @@ var FormatAssistantSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Format Assistant" });
-    new import_obsidian.Setting(containerEl).setName("API Base URL").setDesc("OpenAI-compatible API base URL, without /chat/completions.").addText(
+    new import_obsidian2.Setting(containerEl).setName("API Base URL").setDesc("OpenAI-compatible API base URL, without /chat/completions.").addText(
       (text) => text.setPlaceholder("https://api.openai.com/v1").setValue(this.plugin.settings.baseUrl).onChange(async (value) => {
         this.plugin.settings.baseUrl = value.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("API Key").setDesc("Stored in Obsidian plugin data. The plugin never logs this value.").addText((text) => {
+    new import_obsidian2.Setting(containerEl).setName("API Key").setDesc("Stored in Obsidian plugin data. The plugin never logs this value.").addText((text) => {
       text.inputEl.type = "password";
       text.setPlaceholder("sk-...").setValue(this.plugin.settings.apiKey).onChange(async (value) => {
         this.plugin.settings.apiKey = value;
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian.Setting(containerEl).setName("Model").setDesc("Example: gpt-4o-mini.").addText(
+    new import_obsidian2.Setting(containerEl).setName("Model").setDesc("Example: gpt-4o-mini.").addText(
       (text) => text.setPlaceholder("gpt-4o-mini").setValue(this.plugin.settings.model).onChange(async (value) => {
         this.plugin.settings.model = value.trim();
         await this.plugin.saveSettings();
+        this.plugin.refreshSidebarViews();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Max Tokens").addText(
+    new import_obsidian2.Setting(containerEl).setName("Max Tokens").addText(
       (text) => text.setPlaceholder("1200").setValue(String(this.plugin.settings.maxTokens)).onChange(async (value) => {
         this.plugin.settings.maxTokens = this.toNumber(value, 1200, 1);
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Temperature").addSlider(
+    new import_obsidian2.Setting(containerEl).setName("Temperature").addSlider(
       (slider) => slider.setLimits(0, 2, 0.1).setDynamicTooltip().setValue(this.plugin.settings.temperature).onChange(async (value) => {
         this.plugin.settings.temperature = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Provider Type").addDropdown(
+    new import_obsidian2.Setting(containerEl).setName("Provider Type").addDropdown(
       (dropdown) => dropdown.addOption("openai-compatible", "OpenAI-compatible").setValue(this.plugin.settings.providerType).onChange(async (value) => {
         this.plugin.settings.providerType = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("System Prompt").setDesc("Global rules sent with each formatting request.").addTextArea((text) => {
+    new import_obsidian2.Setting(containerEl).setName("System Prompt").setDesc("Global rules sent with each formatting request.").addTextArea((text) => {
       text.inputEl.rows = 12;
       text.inputEl.cols = 60;
       text.setValue(this.plugin.settings.systemPrompt).onChange(async (value) => {
@@ -351,27 +379,58 @@ var FormatAssistantSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       });
     });
-    new import_obsidian.Setting(containerEl).setName("Preview before replace").setDesc("When enabled, the preview shows both original and formatted text. Replacement still always requires confirmation.").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Preview before replace").setDesc("When enabled, the preview shows both original and formatted text. Replacement still always requires confirmation.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.previewBeforeReplace).onChange(async (value) => {
         this.plugin.settings.previewBeforeReplace = value;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Timeout seconds").addText(
+    new import_obsidian2.Setting(containerEl).setName("Timeout seconds").addText(
       (text) => text.setPlaceholder("30").setValue(String(this.plugin.settings.timeoutSeconds)).onChange(async (value) => {
         this.plugin.settings.timeoutSeconds = this.toNumber(value, 30, 1);
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Test API connection").setDesc("Sends a minimal chat completion request using the current settings.").addButton(
+    new import_obsidian2.Setting(containerEl).setName("Sidebar default mode").addDropdown((dropdown) => {
+      for (const mode of FORMAT_MODES) {
+        dropdown.addOption(mode, FORMAT_MODE_LABELS[mode]);
+      }
+      dropdown.setValue(this.plugin.settings.sidebarDefaultMode).onChange(async (value) => {
+        this.plugin.settings.sidebarDefaultMode = value;
+        await this.plugin.saveSettings();
+        this.plugin.refreshSidebarViews();
+      });
+    });
+    new import_obsidian2.Setting(containerEl).setName("Auto use selection on sidebar open").setDesc("When enabled, the sidebar reads the current editor selection as temporary context when opened.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.autoUseSelectionOnSidebarOpen).onChange(async (value) => {
+        this.plugin.settings.autoUseSelectionOnSidebarOpen = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("Include current file name in prompt").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.includeCurrentFileNameInPrompt).onChange(async (value) => {
+        this.plugin.settings.includeCurrentFileNameInPrompt = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("Include full current note").setDesc("Reserved for a future explicit workflow. The first sidebar version never sends the full note.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.includeFullCurrentNote).onChange(async (value) => {
+        this.plugin.settings.includeFullCurrentNote = value;
+        await this.plugin.saveSettings();
+        if (value) {
+          new import_obsidian2.Notice("Full-note sending is not implemented in this version.");
+        }
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("Test API connection").setDesc("Sends a minimal chat completion request using the current settings.").addButton(
       (button) => button.setButtonText("Test").setCta().onClick(async () => {
         button.setDisabled(true);
         button.setButtonText("Testing...");
         try {
           await this.plugin.testConnection();
-          new import_obsidian.Notice("API connection succeeded.");
+          new import_obsidian2.Notice("API connection succeeded.");
         } catch (error) {
-          new import_obsidian.Notice(this.plugin.toUserError(error));
+          new import_obsidian2.Notice(this.plugin.toUserError(error));
         } finally {
           button.setDisabled(false);
           button.setButtonText("Test");
@@ -380,7 +439,7 @@ var FormatAssistantSettingTab = class extends import_obsidian.PluginSettingTab {
     );
     containerEl.createDiv({
       cls: "format-assistant-setting-warning",
-      text: "Format Assistant only sends the selected text for the command you run. It does not scan your vault or batch-edit notes."
+      text: "Format Assistant only sends selected text for the command or sidebar action you run. It does not scan your vault or batch-edit notes."
     });
   }
   toNumber(value, fallback, min) {
@@ -391,3 +450,596 @@ var FormatAssistantSettingTab = class extends import_obsidian.PluginSettingTab {
     return parsed;
   }
 };
+
+// src/sidebar-view.ts
+var import_obsidian3 = require("obsidian");
+var FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
+var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.customInstruction = "";
+    this.selectionContext = null;
+    this.outputText = "";
+    this.statusText = "";
+    this.errorText = "";
+    this.loading = false;
+    this.customInputEl = null;
+    this.plugin = plugin;
+    this.mode = plugin.settings.sidebarDefaultMode;
+  }
+  getViewType() {
+    return FORMAT_ASSISTANT_VIEW_TYPE;
+  }
+  getDisplayText() {
+    return "Format Assistant";
+  }
+  getIcon() {
+    return "sparkles";
+  }
+  async onOpen() {
+    this.render();
+    this.refreshContextStatus();
+    if (this.plugin.settings.autoUseSelectionOnSidebarOpen) {
+      this.useCurrentSelection(false);
+    }
+  }
+  async onClose() {
+    this.contentEl.empty();
+  }
+  render() {
+    const root = this.contentEl;
+    root.empty();
+    root.addClass("format-assistant-sidebar");
+    this.renderHeader(root);
+    this.renderContext(root);
+    this.renderModeSelector(root);
+    this.renderInput(root);
+    this.renderSelectionControls(root);
+    this.renderActions(root);
+    this.renderOutput(root);
+    this.renderStatus(root);
+  }
+  refreshContextStatus() {
+    var _a, _b, _c;
+    const view = this.getActiveMarkdownView();
+    const selection = (_a = view == null ? void 0 : view.editor.getSelection()) != null ? _a : "";
+    const activeName = (_c = (_b = view == null ? void 0 : view.file) == null ? void 0 : _b.basename) != null ? _c : "No active Markdown file";
+    if (!this.selectionContext) {
+      this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. No selection captured.`;
+    }
+    this.render();
+  }
+  focusInput() {
+    var _a;
+    (_a = this.customInputEl) == null ? void 0 : _a.focus();
+  }
+  useCurrentSelection(showNotice = true) {
+    const view = this.getActiveMarkdownView();
+    if (!view) {
+      this.setError("No active Markdown editor.");
+      if (showNotice) {
+        new import_obsidian3.Notice("No active Markdown editor.");
+      }
+      return;
+    }
+    this.setContextFromEditor(view.editor, view, showNotice);
+  }
+  setContextFromEditor(editor, view, showNotice) {
+    var _a, _b, _c, _d;
+    const selectedText = editor.getSelection();
+    if (!selectedText.trim()) {
+      this.setError("Please select text first.");
+      if (showNotice) {
+        new import_obsidian3.Notice("Please select text first.");
+      }
+      return;
+    }
+    this.selectionContext = {
+      text: selectedText,
+      filePath: (_b = (_a = view == null ? void 0 : view.file) == null ? void 0 : _a.path) != null ? _b : null,
+      fileName: (_d = (_c = view == null ? void 0 : view.file) == null ? void 0 : _c.basename) != null ? _d : null,
+      from: editor.getCursor("from"),
+      to: editor.getCursor("to")
+    };
+    this.errorText = "";
+    this.statusText = `Captured ${this.describeText(selectedText)}.`;
+    this.render();
+    if (showNotice) {
+      new import_obsidian3.Notice("Selection sent to Format Assistant.");
+    }
+  }
+  renderHeader(root) {
+    const header = root.createDiv({ cls: "format-assistant-header" });
+    const titleBlock = header.createDiv();
+    titleBlock.createEl("h2", { text: "Format Assistant" });
+    titleBlock.createDiv({
+      cls: "format-assistant-model",
+      text: this.plugin.settings.model || "No model configured"
+    });
+    const settingsButton = header.createEl("button", {
+      text: "Open settings",
+      cls: "format-assistant-small-button"
+    });
+    settingsButton.addEventListener("click", () => this.openSettings());
+  }
+  renderContext(root) {
+    var _a, _b, _c, _d, _e;
+    const panel = root.createDiv({ cls: "format-assistant-panel" });
+    panel.createEl("h3", { text: "Context" });
+    const activeView = this.getActiveMarkdownView();
+    const activeSelection = (_a = activeView == null ? void 0 : activeView.editor.getSelection()) != null ? _a : "";
+    const rows = [
+      ["Current file", (_e = (_d = (_b = this.selectionContext) == null ? void 0 : _b.fileName) != null ? _d : (_c = activeView == null ? void 0 : activeView.file) == null ? void 0 : _c.basename) != null ? _e : "None"],
+      ["Current editor selection", activeSelection.trim() ? "Yes" : "No"],
+      ["Captured selection", this.selectionContext ? this.describeText(this.selectionContext.text) : "None"],
+      ["Mode", FORMAT_MODE_LABELS[this.mode]]
+    ];
+    const list = panel.createDiv({ cls: "format-assistant-context-list" });
+    for (const [label, value] of rows) {
+      const row = list.createDiv({ cls: "format-assistant-context-row" });
+      row.createSpan({ text: label });
+      row.createSpan({ text: value });
+    }
+  }
+  renderModeSelector(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel" });
+    panel.createEl("h3", { text: "Mode" });
+    const select = panel.createEl("select", { cls: "format-assistant-select" });
+    for (const mode of FORMAT_MODES) {
+      const option = select.createEl("option", {
+        text: FORMAT_MODE_LABELS[mode],
+        value: mode
+      });
+      option.selected = mode === this.mode;
+    }
+    select.addEventListener("change", () => {
+      this.mode = select.value;
+      this.statusText = `Mode set to ${FORMAT_MODE_LABELS[this.mode]}.`;
+      this.render();
+    });
+  }
+  renderInput(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel" });
+    panel.createEl("h3", { text: "Instruction" });
+    this.customInputEl = panel.createEl("textarea", {
+      cls: "format-assistant-textarea",
+      attr: {
+        placeholder: "\u8F93\u5165\u4F60\u5E0C\u671B\u5982\u4F55\u6574\u7406\u5F53\u524D\u9009\u4E2D\u6587\u672C\uFF0C\u4F8B\u5982\uFF1A\u6574\u7406\u4E3A\u66F4\u6E05\u695A\u7684\u8BFE\u7A0B\u7B14\u8BB0\uFF0C\u4E0D\u8981\u6269\u5199\u3002"
+      }
+    });
+    this.customInputEl.value = this.customInstruction;
+    this.customInputEl.addEventListener("input", () => {
+      var _a, _b;
+      this.customInstruction = (_b = (_a = this.customInputEl) == null ? void 0 : _a.value) != null ? _b : "";
+    });
+  }
+  renderSelectionControls(root) {
+    const panel = root.createDiv({ cls: "format-assistant-button-row" });
+    const useButton = panel.createEl("button", { text: "Use current selection" });
+    useButton.addEventListener("click", () => this.useCurrentSelection(true));
+    const refreshButton = panel.createEl("button", { text: "Refresh selection" });
+    refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
+    const clearButton = panel.createEl("button", { text: "Clear context" });
+    clearButton.addEventListener("click", () => {
+      this.selectionContext = null;
+      this.statusText = "Context cleared.";
+      this.errorText = "";
+      this.render();
+    });
+  }
+  renderActions(root) {
+    const panel = root.createDiv({ cls: "format-assistant-button-row" });
+    const generateButton = panel.createEl("button", {
+      text: this.loading ? "Generating..." : "Generate",
+      cls: "mod-cta"
+    });
+    generateButton.disabled = this.loading;
+    generateButton.addEventListener("click", () => {
+      void this.generate();
+    });
+    const copyButton = panel.createEl("button", { text: "Copy result" });
+    copyButton.disabled = !this.outputText;
+    copyButton.addEventListener("click", () => {
+      void this.copyResult();
+    });
+    const replaceButton = panel.createEl("button", { text: "Replace selection" });
+    replaceButton.disabled = !this.outputText;
+    replaceButton.addEventListener("click", () => {
+      this.confirmReplace();
+    });
+    const insertButton = panel.createEl("button", { text: "Insert below selection" });
+    insertButton.disabled = !this.outputText;
+    insertButton.addEventListener("click", () => {
+      this.confirmInsertBelow();
+    });
+    const cancelButton = panel.createEl("button", { text: "Cancel / Clear" });
+    cancelButton.addEventListener("click", () => {
+      this.outputText = "";
+      this.errorText = "";
+      this.statusText = "Output cleared.";
+      this.loading = false;
+      this.render();
+    });
+  }
+  renderOutput(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-output-panel" });
+    panel.createEl("h3", { text: "Output" });
+    if (!this.outputText) {
+      panel.createDiv({
+        cls: "format-assistant-empty",
+        text: "No result yet. Capture a selection, choose a mode, then Generate."
+      });
+      return;
+    }
+    panel.createEl("pre", {
+      cls: "format-assistant-output",
+      text: this.outputText
+    });
+  }
+  renderStatus(root) {
+    const panel = root.createDiv({ cls: "format-assistant-status" });
+    if (this.loading) {
+      panel.createDiv({ text: "Loading..." });
+    }
+    if (this.errorText) {
+      panel.createDiv({
+        cls: "format-assistant-error",
+        text: this.errorText
+      });
+    }
+    if (this.statusText) {
+      panel.createDiv({ text: this.statusText });
+    }
+    if (this.selectionContext) {
+      panel.createDiv({
+        cls: "format-assistant-muted",
+        text: `Prompt context: ${this.describeText(this.selectionContext.text)}.`
+      });
+    }
+    if (this.plugin.settings.includeFullCurrentNote) {
+      panel.createDiv({
+        cls: "format-assistant-warning",
+        text: "Full-note setting is on, but this version still sends only captured selection text."
+      });
+    }
+  }
+  async generate() {
+    var _a, _b;
+    if (!((_a = this.selectionContext) == null ? void 0 : _a.text.trim())) {
+      this.setError("Please select text first.");
+      new import_obsidian3.Notice("Please select text first.");
+      return;
+    }
+    const validationError = this.plugin.validateApiSettings();
+    if (validationError) {
+      this.setError(validationError);
+      new import_obsidian3.Notice(validationError);
+      return;
+    }
+    this.loading = true;
+    this.errorText = "";
+    this.statusText = "Generating...";
+    this.render();
+    try {
+      this.outputText = await this.plugin.generateFromSelection(
+        this.mode,
+        this.selectionContext.text,
+        this.customInstruction,
+        (_b = this.selectionContext.fileName) != null ? _b : void 0
+      );
+      this.statusText = `Generated ${this.describeText(this.outputText)}.`;
+    } catch (error) {
+      this.errorText = this.plugin.toUserError(error);
+      this.statusText = "";
+      new import_obsidian3.Notice(this.errorText);
+    } finally {
+      this.loading = false;
+      this.render();
+    }
+  }
+  async copyResult() {
+    if (!this.outputText) {
+      new import_obsidian3.Notice("No result to copy.");
+      return;
+    }
+    await navigator.clipboard.writeText(this.outputText);
+    this.statusText = "Result copied.";
+    this.render();
+    new import_obsidian3.Notice("Result copied.");
+  }
+  confirmReplace() {
+    if (!this.outputText) {
+      new import_obsidian3.Notice("No result to replace with.");
+      return;
+    }
+    new ConfirmModal(this.app, {
+      message: "\u786E\u8BA4\u7528\u751F\u6210\u7ED3\u679C\u66FF\u6362\u5F53\u524D\u9009\u533A\u5417\uFF1F",
+      confirmText: "Replace selection",
+      onConfirm: () => this.replaceSelection()
+    }).open();
+  }
+  confirmInsertBelow() {
+    if (!this.outputText) {
+      new import_obsidian3.Notice("No result to insert.");
+      return;
+    }
+    new ConfirmModal(this.app, {
+      message: "\u786E\u8BA4\u5C06\u751F\u6210\u7ED3\u679C\u63D2\u5165\u5230\u5F53\u524D\u9009\u533A\u4E4B\u540E\u5417\uFF1F",
+      confirmText: "Insert below selection",
+      onConfirm: () => this.insertBelowSelection()
+    }).open();
+  }
+  replaceSelection() {
+    const selectionState = this.getVerifiedSelectionState();
+    if (!selectionState) {
+      return;
+    }
+    selectionState.editor.replaceRange(
+      this.outputText,
+      selectionState.from,
+      selectionState.to
+    );
+    this.statusText = "Selection replaced.";
+    this.render();
+    new import_obsidian3.Notice("Selection replaced.");
+  }
+  insertBelowSelection() {
+    const selectionState = this.getVerifiedSelectionState();
+    if (!selectionState) {
+      return;
+    }
+    selectionState.editor.replaceRange(
+      `
+
+${this.outputText}`,
+      selectionState.to
+    );
+    this.statusText = "Result inserted below selection.";
+    this.render();
+    new import_obsidian3.Notice("Result inserted below selection.");
+  }
+  getVerifiedSelectionState() {
+    var _a;
+    const view = this.getActiveMarkdownView();
+    if (!view) {
+      this.setError("No active Markdown editor.");
+      new import_obsidian3.Notice("No active Markdown editor.");
+      return null;
+    }
+    if (!this.selectionContext) {
+      this.setError("Please capture a selection first.");
+      new import_obsidian3.Notice("Please capture a selection first.");
+      return null;
+    }
+    if (this.selectionContext.filePath && ((_a = view.file) == null ? void 0 : _a.path) !== this.selectionContext.filePath) {
+      this.setError("Active file changed. Please refresh selection.");
+      new import_obsidian3.Notice("Active file changed. Please refresh selection.");
+      return null;
+    }
+    const currentSelection = view.editor.getSelection();
+    const currentFrom = view.editor.getCursor("from");
+    const currentTo = view.editor.getCursor("to");
+    if (!currentSelection.trim()) {
+      this.setError("Current editor has no selection. Please refresh selection.");
+      new import_obsidian3.Notice("Current editor has no selection. Please refresh selection.");
+      return null;
+    }
+    if (currentSelection !== this.selectionContext.text || !positionsEqual(currentFrom, this.selectionContext.from) || !positionsEqual(currentTo, this.selectionContext.to)) {
+      this.setError("Selection changed. Please click Refresh selection before replacing.");
+      new import_obsidian3.Notice("Selection changed. Please click Refresh selection before replacing.");
+      return null;
+    }
+    return {
+      editor: view.editor,
+      from: currentFrom,
+      to: currentTo
+    };
+  }
+  getActiveMarkdownView() {
+    return this.app.workspace.getActiveViewOfType(import_obsidian3.MarkdownView);
+  }
+  setError(message) {
+    this.errorText = message;
+    this.statusText = "";
+    this.render();
+  }
+  describeText(text) {
+    const chars = text.length;
+    const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+    return `${words} words / ${chars} chars`;
+  }
+  openSettings() {
+    var _a, _b;
+    const appWithSettings = this.app;
+    (_a = appWithSettings.setting) == null ? void 0 : _a.open();
+    (_b = appWithSettings.setting) == null ? void 0 : _b.openTabById(this.plugin.manifest.id);
+  }
+};
+function positionsEqual(left, right) {
+  return left.line === right.line && left.ch === right.ch;
+}
+
+// src/main.ts
+var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
+  async onload() {
+    await this.loadSettings();
+    this.registerView(
+      FORMAT_ASSISTANT_VIEW_TYPE,
+      (leaf) => new FormatAssistantSidebarView(leaf, this)
+    );
+    this.addRibbonIcon("sparkles", "Format Assistant", () => {
+      void this.openSidebar();
+    });
+    this.addCommand({
+      id: "open-format-assistant-sidebar",
+      name: "Open Format Assistant sidebar",
+      callback: () => {
+        void this.openSidebar();
+      }
+    });
+    this.addCommand({
+      id: "focus-format-assistant-input",
+      name: "Focus Format Assistant input",
+      callback: () => {
+        void this.focusSidebarInput();
+      }
+    });
+    this.addCommand({
+      id: "send-selected-text-to-format-assistant",
+      name: "Send selected text to Format Assistant",
+      editorCallback: (editor, view) => {
+        void this.sendSelectionToSidebar(editor, view instanceof import_obsidian4.MarkdownView ? view : null);
+      }
+    });
+    for (const task of FORMAT_TASKS) {
+      this.addCommand({
+        id: task.id,
+        name: task.name,
+        editorCallback: (editor, view) => {
+          void this.formatSelection(
+            editor,
+            view instanceof import_obsidian4.MarkdownView ? view : null,
+            task.mode
+          );
+        }
+      });
+    }
+    this.addSettingTab(new FormatAssistantSettingTab(this.app, this));
+  }
+  onunload() {
+    this.app.workspace.detachLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE);
+  }
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+  async openSidebar() {
+    const leaves = this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE);
+    let leaf = leaves.length > 0 ? leaves[0] : null;
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false);
+      await (leaf == null ? void 0 : leaf.setViewState({
+        type: FORMAT_ASSISTANT_VIEW_TYPE,
+        active: true
+      }));
+    }
+    if (!leaf) {
+      new import_obsidian4.Notice("Could not open Format Assistant sidebar.");
+      return null;
+    }
+    await this.app.workspace.revealLeaf(leaf);
+    const view = leaf.view instanceof FormatAssistantSidebarView ? leaf.view : null;
+    view == null ? void 0 : view.refreshContextStatus();
+    if (this.settings.autoUseSelectionOnSidebarOpen) {
+      view == null ? void 0 : view.useCurrentSelection(false);
+    }
+    return view;
+  }
+  async focusSidebarInput() {
+    const view = await this.openSidebar();
+    view == null ? void 0 : view.focusInput();
+  }
+  async sendSelectionToSidebar(editor, view) {
+    const sidebar = await this.openSidebar();
+    if (!sidebar) {
+      return;
+    }
+    const selection = editor.getSelection();
+    if (!selection.trim()) {
+      new import_obsidian4.Notice("Please select text before sending it to Format Assistant.");
+      return;
+    }
+    sidebar.setContextFromEditor(editor, view, true);
+  }
+  refreshSidebarViews() {
+    for (const leaf of this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE)) {
+      if (leaf.view instanceof FormatAssistantSidebarView) {
+        leaf.view.render();
+      }
+    }
+  }
+  validateApiSettings() {
+    return validateApiSettings(this.settings);
+  }
+  async generateFromSelection(mode, selectedText, customInstruction, currentFileName) {
+    const validationError = this.validateApiSettings();
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    return callChatCompletions(this.settings, {
+      mode,
+      selectedText,
+      customInstruction,
+      currentFileName: this.settings.includeCurrentFileNameInPrompt ? currentFileName : void 0
+    });
+  }
+  async testConnection() {
+    const validationError = this.validateApiSettings();
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    await callChatCompletions(this.settings, {
+      mode: "custom",
+      selectedText: "\u8FDE\u63A5\u6D4B\u8BD5\u3002\u8BF7\u53EA\u56DE\u590D OK\u3002",
+      customInstruction: "\u8BF7\u53EA\u56DE\u590D\uFF1AOK"
+    });
+  }
+  toUserError(error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return "API request timed out.";
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return "Formatting failed.";
+  }
+  async formatSelection(editor, view, mode) {
+    var _a;
+    const selection = editor.getSelection();
+    const selectionStart = editor.getCursor("from");
+    const selectionEnd = editor.getCursor("to");
+    if (!selection.trim()) {
+      new import_obsidian4.Notice("Please select text before running Format Assistant.");
+      return;
+    }
+    const validationError = this.validateApiSettings();
+    if (validationError) {
+      new import_obsidian4.Notice(validationError);
+      return;
+    }
+    new import_obsidian4.Notice("Formatting selection...");
+    try {
+      const result = await this.generateFromSelection(
+        mode,
+        selection,
+        "",
+        (_a = view == null ? void 0 : view.file) == null ? void 0 : _a.basename
+      );
+      new PreviewModal(this.app, {
+        originalText: selection,
+        resultText: result,
+        showOriginal: this.settings.previewBeforeReplace,
+        onReplace: () => {
+          const currentRange = editor.getRange(selectionStart, selectionEnd);
+          if (currentRange !== selection) {
+            new import_obsidian4.Notice("Selection changed. Please select the text again.");
+            return;
+          }
+          editor.replaceRange(result, selectionStart, selectionEnd);
+          new import_obsidian4.Notice("Selection replaced.");
+        }
+      }).open();
+    } catch (error) {
+      new import_obsidian4.Notice(this.toUserError(error));
+    }
+  }
+};
+function getActiveMarkdownView(plugin) {
+  const view = plugin.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+  return view != null ? view : null;
+}
+function getOrCreateRightLeaf(plugin) {
+  return plugin.app.workspace.getRightLeaf(false);
+}
