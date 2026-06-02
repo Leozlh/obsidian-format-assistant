@@ -72,8 +72,18 @@ export const FORMAT_TASKS: FormatTask[] = [
 ];
 
 const TASK_PROMPTS: Record<FormatMode, string> = {
-	"obsidian-markdown":
-		"请将输入文本整理为清晰、规范、适合 Obsidian 的 Markdown。保留原意、公式、条件、wikilink、tag、callout 和 frontmatter。",
+	"obsidian-markdown": `请将输入文本整理为清晰、规范、适合 Obsidian 的 Markdown。
+Only transform the provided input text.
+Do not add frontmatter, metadata, date, tags, title, headings, templates, or sections that are not explicitly present in the input.
+Do not infer a diary structure from the current file name.
+If the input is only several diary sentences, only format those sentences.
+不要添加输入文本中不存在的内容。
+不要添加 frontmatter、date、tags、title、文件标题或日记模板。
+不要添加“日常记录”“任务清单”等小节，除非输入里已经有。
+不要根据 currentFileName 推断日期或标题。
+不要扩写事实。
+只做格式整理、列表化、轻微措辞清理。
+Return only the final Markdown.`,
 	"course-note": `请将输入文本整理为课程笔记，严格使用以下 Markdown 结构：
 ## 核心概念
 ## 公式与条件

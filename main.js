@@ -99,7 +99,18 @@ var FORMAT_TASKS = [
   }
 ];
 var TASK_PROMPTS = {
-  "obsidian-markdown": "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u6E05\u6670\u3001\u89C4\u8303\u3001\u9002\u5408 Obsidian \u7684 Markdown\u3002\u4FDD\u7559\u539F\u610F\u3001\u516C\u5F0F\u3001\u6761\u4EF6\u3001wikilink\u3001tag\u3001callout \u548C frontmatter\u3002",
+  "obsidian-markdown": `\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u6E05\u6670\u3001\u89C4\u8303\u3001\u9002\u5408 Obsidian \u7684 Markdown\u3002
+Only transform the provided input text.
+Do not add frontmatter, metadata, date, tags, title, headings, templates, or sections that are not explicitly present in the input.
+Do not infer a diary structure from the current file name.
+If the input is only several diary sentences, only format those sentences.
+\u4E0D\u8981\u6DFB\u52A0\u8F93\u5165\u6587\u672C\u4E2D\u4E0D\u5B58\u5728\u7684\u5185\u5BB9\u3002
+\u4E0D\u8981\u6DFB\u52A0 frontmatter\u3001date\u3001tags\u3001title\u3001\u6587\u4EF6\u6807\u9898\u6216\u65E5\u8BB0\u6A21\u677F\u3002
+\u4E0D\u8981\u6DFB\u52A0\u201C\u65E5\u5E38\u8BB0\u5F55\u201D\u201C\u4EFB\u52A1\u6E05\u5355\u201D\u7B49\u5C0F\u8282\uFF0C\u9664\u975E\u8F93\u5165\u91CC\u5DF2\u7ECF\u6709\u3002
+\u4E0D\u8981\u6839\u636E currentFileName \u63A8\u65AD\u65E5\u671F\u6216\u6807\u9898\u3002
+\u4E0D\u8981\u6269\u5199\u4E8B\u5B9E\u3002
+\u53EA\u505A\u683C\u5F0F\u6574\u7406\u3001\u5217\u8868\u5316\u3001\u8F7B\u5FAE\u63AA\u8F9E\u6E05\u7406\u3002
+Return only the final Markdown.`,
   "course-note": `\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u6574\u7406\u4E3A\u8BFE\u7A0B\u7B14\u8BB0\uFF0C\u4E25\u683C\u4F7F\u7528\u4EE5\u4E0B Markdown \u7ED3\u6784\uFF1A
 ## \u6838\u5FC3\u6982\u5FF5
 ## \u516C\u5F0F\u4E0E\u6761\u4EF6
@@ -665,6 +676,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.completedMs = null;
     this.lastGenerationSource = null;
     this.lastInputLength = 0;
+    this.actualInput = this.createActualInputSummary(null, "");
     this.customInputEl = null;
     this.manualInputEl = null;
     this.selectedPresetId = "";
@@ -700,6 +712,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.renderContextPreview(root);
     this.renderModeSelector(root);
     this.renderManualInput(root);
+    this.renderActualInput(root);
     this.renderInput(root);
     this.renderPromptPresets(root);
     this.renderSelectionControls(root);
@@ -888,6 +901,24 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       clearButton.disabled = !this.manualInput;
     });
   }
+  renderActualInput(root) {
+    const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-actual-input" });
+    const header = panel.createDiv({ cls: "format-assistant-section-header" });
+    header.createEl("h3", { text: "Actual Input" });
+    header.createSpan({
+      cls: "format-assistant-muted",
+      text: `Source: ${this.actualInput.source ? this.formatInputSource(this.actualInput.source) : "None"}`
+    });
+    panel.createDiv({
+      cls: "format-assistant-context-meta",
+      text: `${this.actualInput.chars} chars / ${this.actualInput.words} words / ${this.actualInput.lines} lines`
+    });
+    const previewText = this.actualInput.text ? `${this.actualInput.text}${this.actualInput.truncated ? "\n... truncated" : ""}` : "No input resolved yet. Click Generate to confirm what will be sent.";
+    panel.createEl("pre", {
+      cls: "format-assistant-actual-input-preview",
+      text: previewText
+    });
+  }
   renderInput(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Instruction" });
@@ -972,25 +1003,40 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     });
     const resultPanel = root.createDiv({ cls: "format-assistant-action-group" });
     resultPanel.createEl("h3", { text: "Result" });
-    const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
     const canCopy = Boolean(this.outputText) && !this.loading && !this.errorText;
     const canWriteSelection = canCopy && this.lastGenerationSource === "selection";
-    const copyButton = resultButtons.createEl("button", { text: "Copy" });
+    const canClearOutput = Boolean(this.outputText) && !this.loading;
+    this.renderResultOutput(resultPanel);
+    const resultButtons = resultPanel.createDiv({ cls: "format-assistant-result-buttons" });
+    const copyButton = resultButtons.createEl("button", {
+      text: "Copy",
+      cls: "format-assistant-result-copy"
+    });
     copyButton.disabled = !canCopy;
     copyButton.addEventListener("click", () => {
       void this.copyResult();
     });
-    const replaceButton = resultButtons.createEl("button", { text: "Replace" });
+    const replaceButton = resultButtons.createEl("button", {
+      text: "Replace selection",
+      cls: "format-assistant-result-secondary"
+    });
     replaceButton.disabled = !canWriteSelection;
     replaceButton.addEventListener("click", () => {
       this.confirmReplace();
     });
-    const insertButton = resultButtons.createEl("button", { text: "Insert below" });
+    const insertButton = resultButtons.createEl("button", {
+      text: "Insert below selection",
+      cls: "format-assistant-result-secondary"
+    });
     insertButton.disabled = !canWriteSelection;
     insertButton.addEventListener("click", () => {
       this.confirmInsertBelow();
     });
-    const cancelButton = resultButtons.createEl("button", { text: "Clear output" });
+    const cancelButton = resultButtons.createEl("button", {
+      text: "Clear output",
+      cls: "format-assistant-result-clear"
+    });
+    cancelButton.disabled = !canClearOutput;
     cancelButton.addEventListener("click", () => {
       this.outputText = "";
       this.errorText = "";
@@ -999,9 +1045,15 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       this.completedMs = null;
       this.render();
     });
-    this.renderResultOutput(resultPanel);
   }
   renderResultOutput(parent) {
+    if (this.completedMs !== null && this.lastGenerationSource) {
+      const state = this.errorText ? "Failed from" : "Generated from";
+      parent.createDiv({
+        cls: "format-assistant-result-status",
+        text: `Status: ${state} ${this.formatInputSource(this.lastGenerationSource)} \xB7 Completed in ${this.completedMs} ms`
+      });
+    }
     if (this.loading) {
       parent.createDiv({
         cls: "format-assistant-output format-assistant-output-state",
@@ -1023,52 +1075,29 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       });
       return;
     }
-    if (this.completedMs !== null) {
-      const source = this.lastGenerationSource ? this.formatInputSource(this.lastGenerationSource) : "Unknown";
-      parent.createDiv({
-        cls: "format-assistant-muted",
-        text: `Generated from: ${source}. Completed in ${this.completedMs} ms`
-      });
-    }
     parent.createEl("pre", {
       cls: "format-assistant-output",
       text: this.outputText
     });
   }
   renderStatus(root) {
+    if (!this.plugin.settings.includeFullCurrentNote) {
+      return;
+    }
     const panel = root.createDiv({ cls: "format-assistant-status" });
-    if (this.loading) {
-      panel.createDiv({ text: "Loading..." });
-    }
-    if (this.errorText) {
-      panel.createDiv({
-        cls: "format-assistant-error",
-        text: this.errorText
-      });
-    }
-    if (this.statusText) {
-      panel.createDiv({ text: this.statusText });
-    }
-    if (this.selectionContext && !this.manualInput.trim()) {
-      panel.createDiv({
-        cls: "format-assistant-muted",
-        text: `Prompt context: ${this.describeText(this.selectionContext.text)}.`
-      });
-    }
-    if (this.plugin.settings.includeFullCurrentNote) {
-      panel.createDiv({
-        cls: "format-assistant-warning",
-        text: "Full-note setting is on, but this version still sends only captured selection text."
-      });
-    }
+    panel.createDiv({
+      cls: "format-assistant-warning",
+      text: "Full-note setting is on, but this version still sends only captured selection text."
+    });
   }
   async generate() {
-    const input = this.getGenerateInput();
+    const input = this.resolveInputForGenerate();
     if (!input) {
       this.setError("No input text. Select text in an editor or paste text into Manual Input.");
       new import_obsidian3.Notice("No input text. Select text in an editor or paste text into Manual Input.");
       return;
     }
+    this.actualInput = this.createActualInputSummary(input.source, input.text);
     const validationError = this.plugin.validateApiSettings();
     if (validationError) {
       this.setError(validationError);
@@ -1271,7 +1300,7 @@ ${this.outputText}`,
   describeText(text) {
     return describeSelection(text);
   }
-  getGenerateInput() {
+  resolveInputForGenerate() {
     var _a, _b, _c, _d, _e, _f, _g;
     const manualText = this.manualInput.trim();
     if (manualText) {
@@ -1291,9 +1320,22 @@ ${this.outputText}`,
       return null;
     }
     return {
-      text: this.selectionContext.text,
+      text: this.selectionContext.text.trim(),
       source: "selection",
       currentFileName: (_g = this.selectionContext.fileName) != null ? _g : void 0
+    };
+  }
+  createActualInputSummary(source, text) {
+    const normalized = text.trim();
+    const previewLimit = 500;
+    const truncated = normalized.length > previewLimit;
+    return {
+      source,
+      text: truncated ? normalized.slice(0, previewLimit) : normalized,
+      chars: normalized.length,
+      words: this.countWords(normalized),
+      lines: this.countLines(normalized),
+      truncated
     };
   }
   getCurrentInputSourceLabel() {
