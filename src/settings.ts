@@ -6,7 +6,7 @@ import {
 	normalizeApiProfiles,
 	type ApiProfile
 } from "./api-profiles";
-import { FORMAT_MODE_LABELS, FORMAT_MODES, type FormatMode } from "./prompts";
+import type { FormatMode } from "./prompts";
 import { normalizePromptPresets, type PromptPreset } from "./sidebar-presets";
 
 export type ProviderType = "openai-compatible";
@@ -231,22 +231,6 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
-
-		new Setting(containerEl)
-			.setName("Sidebar default mode")
-			.addDropdown((dropdown) => {
-				for (const mode of FORMAT_MODES) {
-					dropdown.addOption(mode, FORMAT_MODE_LABELS[mode]);
-				}
-
-				dropdown
-					.setValue(this.plugin.settings.sidebarDefaultMode)
-					.onChange(async (value: FormatMode) => {
-						this.plugin.settings.sidebarDefaultMode = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshSidebarViews();
-					});
-			});
 
 		new Setting(containerEl)
 			.setName("Auto use selection on sidebar open")

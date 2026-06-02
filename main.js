@@ -71,22 +71,6 @@ function toProfileName(name, settings) {
 }
 
 // src/prompts.ts
-var FORMAT_MODES = [
-  "obsidian-markdown",
-  "course-note",
-  "review-card",
-  "wiki-candidates",
-  "concise",
-  "custom"
-];
-var FORMAT_MODE_LABELS = {
-  "obsidian-markdown": "Obsidian Markdown",
-  "course-note": "Course Note",
-  "review-card": "Review Card",
-  "wiki-candidates": "Wiki Candidates",
-  concise: "Concise",
-  custom: "Custom Instruction"
-};
 var FORMAT_TASKS = [
   {
     id: "format-selection-as-obsidian-markdown",
@@ -476,16 +460,6 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Sidebar default mode").addDropdown((dropdown) => {
-      for (const mode of FORMAT_MODES) {
-        dropdown.addOption(mode, FORMAT_MODE_LABELS[mode]);
-      }
-      dropdown.setValue(this.plugin.settings.sidebarDefaultMode).onChange(async (value) => {
-        this.plugin.settings.sidebarDefaultMode = value;
-        await this.plugin.saveSettings();
-        this.plugin.refreshSidebarViews();
-      });
-    });
     new import_obsidian2.Setting(containerEl).setName("Auto use selection on sidebar open").setDesc("When enabled, the sidebar reads the current editor selection as temporary context when opened.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoUseSelectionOnSidebarOpen).onChange(async (value) => {
         this.plugin.settings.autoUseSelectionOnSidebarOpen = value;
@@ -641,10 +615,11 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.statusText = "";
     this.errorText = "";
     this.loading = false;
+    this.completedMs = null;
     this.customInputEl = null;
     this.selectedPresetId = "";
     this.plugin = plugin;
-    this.mode = plugin.settings.sidebarDefaultMode;
+    this.mode = "obsidian-markdown";
   }
   getViewType() {
     return FORMAT_ASSISTANT_VIEW_TYPE;
@@ -678,7 +653,6 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.renderPromptPresets(root);
     this.renderSelectionControls(root);
     this.renderActions(root);
-    this.renderOutput(root);
     this.renderStatus(root);
   }
   refreshContextStatus() {
@@ -773,18 +747,20 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     const header = panel.createDiv({ cls: "format-assistant-section-header" });
     header.createEl("h3", { text: "Context Preview" });
     const preview = (_a = this.currentSelection) != null ? _a : getActiveSelectionPreview(this.getActiveMarkdownInfo());
-    header.createSpan({
-      cls: "format-assistant-muted",
-      text: `\u5F53\u524D\u9009\u533A\uFF1A${preview.characterCount} chars / ${preview.wordCount} words`
-    });
-    panel.createDiv({
-      cls: "format-assistant-muted",
-      text: "\u6253\u5F00\u4FA7\u680F\u540E\u8BF7\u70B9\u51FB Use current selection \u6216 Refresh selection \u6355\u83B7\u6700\u65B0\u9009\u533A\u3002"
+    const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
+    const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
+    meta.createSpan({ text: `Current file: ${fileName}` });
+    meta.createSpan({
+      text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${this.countLines(preview.text)} lines`
     });
     if (!preview.text.trim()) {
       panel.createDiv({
         cls: "format-assistant-empty format-assistant-context-preview",
-        text: "\u8BF7\u5148\u9009\u62E9\u6587\u672C"
+        text: "No selection captured. Select text in an editor, then click Refresh."
+      });
+      panel.createDiv({
+        cls: "format-assistant-muted format-assistant-hint",
+        text: "Use Refresh or Use to capture the latest editor selection."
       });
       return;
     }
@@ -792,22 +768,17 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       cls: "format-assistant-context-preview",
       text: preview.text
     });
+    panel.createDiv({
+      cls: "format-assistant-muted format-assistant-hint",
+      text: "Use Refresh or Use to capture the latest editor selection."
+    });
   }
   renderModeSelector(root) {
-    const panel = root.createDiv({ cls: "format-assistant-panel" });
-    panel.createEl("h3", { text: "Mode" });
-    const select = panel.createEl("select", { cls: "format-assistant-select" });
-    for (const mode of FORMAT_MODES) {
-      const option = select.createEl("option", {
-        text: FORMAT_MODE_LABELS[mode],
-        value: mode
-      });
-      option.selected = mode === this.mode;
-    }
-    select.addEventListener("change", () => {
-      this.mode = select.value;
-      this.statusText = `Mode set to ${FORMAT_MODE_LABELS[this.mode]}.`;
-      this.render();
+    const panel = root.createDiv({ cls: "format-assistant-inline-field" });
+    panel.createSpan({ text: "Mode:" });
+    panel.createSpan({
+      cls: "format-assistant-static-value",
+      text: "Obsidian Markdown"
     });
   }
   renderInput(root) {
@@ -850,14 +821,14 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       this.selectedPresetId = select.value;
     });
     const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-    const addButton = buttons.createEl("button", { text: "Add current input as preset" });
+    const addButton = buttons.createEl("button", { text: "+ Save" });
     addButton.addEventListener("click", () => {
       void this.addCurrentInputAsPreset();
     });
-    const selectButton = buttons.createEl("button", { text: "Select preset" });
+    const selectButton = buttons.createEl("button", { text: "Use" });
     selectButton.disabled = !this.plugin.settings.promptPresets.length;
     selectButton.addEventListener("click", () => this.applySelectedPreset());
-    const removeButton = buttons.createEl("button", { text: "Remove preset" });
+    const removeButton = buttons.createEl("button", { text: "Delete" });
     removeButton.disabled = !this.plugin.settings.promptPresets.length;
     removeButton.addEventListener("click", () => {
       void this.removeSelectedPreset();
@@ -867,7 +838,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     const panel = root.createDiv({ cls: "format-assistant-action-group" });
     panel.createEl("h3", { text: "Selection" });
     const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-    const useButton = buttons.createEl("button", { text: "Use selection" });
+    const useButton = buttons.createEl("button", { text: "Use" });
     useButton.addEventListener("click", () => this.useCurrentSelection(true));
     const refreshButton = buttons.createEl("button", { text: "Refresh" });
     refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
@@ -877,6 +848,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       this.selectionContext = null;
       this.statusText = "Context cleared.";
       this.errorText = "";
+      this.completedMs = null;
       this.render();
     });
   }
@@ -895,17 +867,17 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     resultPanel.createEl("h3", { text: "Result" });
     const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
     const copyButton = resultButtons.createEl("button", { text: "Copy" });
-    copyButton.disabled = !this.outputText;
+    copyButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
     copyButton.addEventListener("click", () => {
       void this.copyResult();
     });
     const replaceButton = resultButtons.createEl("button", { text: "Replace" });
-    replaceButton.disabled = !this.outputText;
+    replaceButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
     replaceButton.addEventListener("click", () => {
       this.confirmReplace();
     });
     const insertButton = resultButtons.createEl("button", { text: "Insert below" });
-    insertButton.disabled = !this.outputText;
+    insertButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
     insertButton.addEventListener("click", () => {
       this.confirmInsertBelow();
     });
@@ -915,20 +887,40 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       this.errorText = "";
       this.statusText = "Output cleared.";
       this.loading = false;
+      this.completedMs = null;
       this.render();
     });
+    this.renderResultOutput(resultPanel);
   }
-  renderOutput(root) {
-    const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-output-panel" });
-    panel.createEl("h3", { text: "Output" });
-    if (!this.outputText) {
-      panel.createDiv({
-        cls: "format-assistant-empty",
-        text: "No result yet. Capture a selection, choose a mode, then Generate."
+  renderResultOutput(parent) {
+    if (this.loading) {
+      parent.createDiv({
+        cls: "format-assistant-output format-assistant-output-state",
+        text: "Generating..."
       });
       return;
     }
-    panel.createEl("pre", {
+    if (this.errorText) {
+      parent.createDiv({
+        cls: "format-assistant-output format-assistant-output-state format-assistant-error",
+        text: this.errorText
+      });
+      return;
+    }
+    if (!this.outputText) {
+      parent.createDiv({
+        cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
+        text: "No result yet. Click Generate to process captured selection."
+      });
+      return;
+    }
+    if (this.completedMs !== null) {
+      parent.createDiv({
+        cls: "format-assistant-muted",
+        text: `Completed in ${this.completedMs} ms`
+      });
+    }
+    parent.createEl("pre", {
       cls: "format-assistant-output",
       text: this.outputText
     });
@@ -969,8 +961,8 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       }
     }
     if (!((_c = this.selectionContext) == null ? void 0 : _c.text.trim())) {
-      this.setError("\u8BF7\u5148\u9009\u4E2D\u6587\u672C");
-      new import_obsidian3.Notice("\u8BF7\u5148\u9009\u4E2D\u6587\u672C");
+      this.setError("No selection captured. Click Refresh or Use, then Generate.");
+      new import_obsidian3.Notice("No selection captured. Click Refresh or Use, then Generate.");
       return;
     }
     const validationError = this.plugin.validateApiSettings();
@@ -980,16 +972,20 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     this.loading = true;
+    this.outputText = "";
     this.errorText = "";
     this.statusText = "Generating...";
+    this.completedMs = null;
     this.render();
     try {
+      const startedAt = performance.now();
       this.outputText = await this.plugin.generateFromSelection(
         this.mode,
         this.selectionContext.text,
         this.customInstruction,
         (_d = this.selectionContext.fileName) != null ? _d : void 0
       );
+      this.completedMs = Math.round(performance.now() - startedAt);
       this.statusText = `Generated ${this.describeText(this.outputText)}.`;
     } catch (error) {
       this.errorText = this.plugin.toUserError(error);
@@ -1158,6 +1154,9 @@ ${this.outputText}`,
   }
   describeText(text) {
     return describeSelection(text);
+  }
+  countLines(text) {
+    return text.trim() ? text.split(/\r?\n/).length : 0;
   }
   openSettings() {
     var _a, _b;

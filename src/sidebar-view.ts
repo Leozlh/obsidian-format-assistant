@@ -8,11 +8,7 @@ import {
 	WorkspaceLeaf
 } from "obsidian";
 import type FormatAssistantPlugin from "./main";
-import {
-	FORMAT_MODE_LABELS,
-	FORMAT_MODES,
-	type FormatMode
-} from "./prompts";
+import type { FormatMode } from "./prompts";
 import { ConfirmModal } from "./preview-modal";
 import {
 	describeSelection,
@@ -44,13 +40,14 @@ export class FormatAssistantSidebarView extends ItemView {
 	private statusText = "";
 	private errorText = "";
 	private loading = false;
+	private completedMs: number | null = null;
 	private customInputEl: HTMLTextAreaElement | null = null;
 	private selectedPresetId = "";
 
 	constructor(leaf: WorkspaceLeaf, plugin: FormatAssistantPlugin) {
 		super(leaf);
 		this.plugin = plugin;
-		this.mode = plugin.settings.sidebarDefaultMode;
+		this.mode = "obsidian-markdown";
 	}
 
 	getViewType(): string {
@@ -91,7 +88,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.renderPromptPresets(root);
 		this.renderSelectionControls(root);
 		this.renderActions(root);
-		this.renderOutput(root);
 		this.renderStatus(root);
 	}
 
@@ -202,20 +198,23 @@ export class FormatAssistantSidebarView extends ItemView {
 		const header = panel.createDiv({ cls: "format-assistant-section-header" });
 		header.createEl("h3", { text: "Context Preview" });
 		const preview = this.currentSelection ?? getActiveSelectionPreview(this.getActiveMarkdownInfo());
-		header.createSpan({
-			cls: "format-assistant-muted",
-			text: `当前选区：${preview.characterCount} chars / ${preview.wordCount} words`
+
+		const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
+		const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
+		meta.createSpan({ text: `Current file: ${fileName}` });
+		meta.createSpan({
+			text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${this.countLines(preview.text)} lines`
 		});
 
-		panel.createDiv({
-			cls: "format-assistant-muted",
-			text: "打开侧栏后请点击 Use current selection 或 Refresh selection 捕获最新选区。"
-		});
 
 		if (!preview.text.trim()) {
 			panel.createDiv({
 				cls: "format-assistant-empty format-assistant-context-preview",
-				text: "请先选择文本"
+				text: "No selection captured. Select text in an editor, then click Refresh."
+			});
+			panel.createDiv({
+				cls: "format-assistant-muted format-assistant-hint",
+				text: "Use Refresh or Use to capture the latest editor selection."
 			});
 			return;
 		}
@@ -224,25 +223,18 @@ export class FormatAssistantSidebarView extends ItemView {
 			cls: "format-assistant-context-preview",
 			text: preview.text
 		});
+		panel.createDiv({
+			cls: "format-assistant-muted format-assistant-hint",
+			text: "Use Refresh or Use to capture the latest editor selection."
+		});
 	}
 
 	private renderModeSelector(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-panel" });
-		panel.createEl("h3", { text: "Mode" });
-
-		const select = panel.createEl("select", { cls: "format-assistant-select" });
-		for (const mode of FORMAT_MODES) {
-			const option = select.createEl("option", {
-				text: FORMAT_MODE_LABELS[mode],
-				value: mode
-			});
-			option.selected = mode === this.mode;
-		}
-
-		select.addEventListener("change", () => {
-			this.mode = select.value as FormatMode;
-			this.statusText = `Mode set to ${FORMAT_MODE_LABELS[this.mode]}.`;
-			this.render();
+		const panel = root.createDiv({ cls: "format-assistant-inline-field" });
+		panel.createSpan({ text: "Mode:" });
+		panel.createSpan({
+			cls: "format-assistant-static-value",
+			text: "Obsidian Markdown"
 		});
 	}
 
@@ -292,16 +284,16 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
 
-		const addButton = buttons.createEl("button", { text: "Add current input as preset" });
+		const addButton = buttons.createEl("button", { text: "+ Save" });
 		addButton.addEventListener("click", () => {
 			void this.addCurrentInputAsPreset();
 		});
 
-		const selectButton = buttons.createEl("button", { text: "Select preset" });
+		const selectButton = buttons.createEl("button", { text: "Use" });
 		selectButton.disabled = !this.plugin.settings.promptPresets.length;
 		selectButton.addEventListener("click", () => this.applySelectedPreset());
 
-		const removeButton = buttons.createEl("button", { text: "Remove preset" });
+		const removeButton = buttons.createEl("button", { text: "Delete" });
 		removeButton.disabled = !this.plugin.settings.promptPresets.length;
 		removeButton.addEventListener("click", () => {
 			void this.removeSelectedPreset();
@@ -313,7 +305,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		panel.createEl("h3", { text: "Selection" });
 		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
 
-		const useButton = buttons.createEl("button", { text: "Use selection" });
+		const useButton = buttons.createEl("button", { text: "Use" });
 		useButton.addEventListener("click", () => this.useCurrentSelection(true));
 
 		const refreshButton = buttons.createEl("button", { text: "Refresh" });
@@ -325,6 +317,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.selectionContext = null;
 			this.statusText = "Context cleared.";
 			this.errorText = "";
+			this.completedMs = null;
 			this.render();
 		});
 	}
@@ -347,19 +340,19 @@ export class FormatAssistantSidebarView extends ItemView {
 		const resultButtons = resultPanel.createDiv({ cls: "format-assistant-button-row" });
 
 		const copyButton = resultButtons.createEl("button", { text: "Copy" });
-		copyButton.disabled = !this.outputText;
+		copyButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
 		copyButton.addEventListener("click", () => {
 			void this.copyResult();
 		});
 
 		const replaceButton = resultButtons.createEl("button", { text: "Replace" });
-		replaceButton.disabled = !this.outputText;
+		replaceButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
 		replaceButton.addEventListener("click", () => {
 			this.confirmReplace();
 		});
 
 		const insertButton = resultButtons.createEl("button", { text: "Insert below" });
-		insertButton.disabled = !this.outputText;
+		insertButton.disabled = !this.outputText || this.loading || Boolean(this.errorText);
 		insertButton.addEventListener("click", () => {
 			this.confirmInsertBelow();
 		});
@@ -370,23 +363,46 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.errorText = "";
 			this.statusText = "Output cleared.";
 			this.loading = false;
+			this.completedMs = null;
 			this.render();
 		});
+
+		this.renderResultOutput(resultPanel);
 	}
 
-	private renderOutput(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-output-panel" });
-		panel.createEl("h3", { text: "Output" });
-
-		if (!this.outputText) {
-			panel.createDiv({
-				cls: "format-assistant-empty",
-				text: "No result yet. Capture a selection, choose a mode, then Generate."
+	private renderResultOutput(parent: HTMLElement): void {
+		if (this.loading) {
+			parent.createDiv({
+				cls: "format-assistant-output format-assistant-output-state",
+				text: "Generating..."
 			});
 			return;
 		}
 
-		panel.createEl("pre", {
+		if (this.errorText) {
+			parent.createDiv({
+				cls: "format-assistant-output format-assistant-output-state format-assistant-error",
+				text: this.errorText
+			});
+			return;
+		}
+
+		if (!this.outputText) {
+			parent.createDiv({
+				cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
+				text: "No result yet. Click Generate to process captured selection."
+			});
+			return;
+		}
+
+		if (this.completedMs !== null) {
+			parent.createDiv({
+				cls: "format-assistant-muted",
+				text: `Completed in ${this.completedMs} ms`
+			});
+		}
+
+		parent.createEl("pre", {
 			cls: "format-assistant-output",
 			text: this.outputText
 		});
@@ -434,8 +450,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		if (!this.selectionContext?.text.trim()) {
-			this.setError("请先选中文本");
-			new Notice("请先选中文本");
+			this.setError("No selection captured. Click Refresh or Use, then Generate.");
+			new Notice("No selection captured. Click Refresh or Use, then Generate.");
 			return;
 		}
 
@@ -447,17 +463,21 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		this.loading = true;
+		this.outputText = "";
 		this.errorText = "";
 		this.statusText = "Generating...";
+		this.completedMs = null;
 		this.render();
 
 		try {
+			const startedAt = performance.now();
 			this.outputText = await this.plugin.generateFromSelection(
 				this.mode,
 				this.selectionContext.text,
 				this.customInstruction,
 				this.selectionContext.fileName ?? undefined
 			);
+			this.completedMs = Math.round(performance.now() - startedAt);
 			this.statusText = `Generated ${this.describeText(this.outputText)}.`;
 		} catch (error) {
 			this.errorText = this.plugin.toUserError(error);
@@ -657,6 +677,10 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private describeText(text: string): string {
 		return describeSelection(text);
+	}
+
+	private countLines(text: string): number {
+		return text.trim() ? text.split(/\r?\n/).length : 0;
 	}
 
 	private openSettings(): void {
