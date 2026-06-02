@@ -676,7 +676,6 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.completedMs = null;
     this.lastGenerationSource = null;
     this.lastInputLength = 0;
-    this.actualInput = this.createActualInputSummary(null, "");
     this.customInputEl = null;
     this.manualInputEl = null;
     this.selectedPresetId = "";
@@ -712,10 +711,8 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.renderContextPreview(root);
     this.renderModeSelector(root);
     this.renderManualInput(root);
-    this.renderActualInput(root);
     this.renderInput(root);
     this.renderPromptPresets(root);
-    this.renderSelectionControls(root);
     this.renderActions(root);
     this.renderStatus(root);
   }
@@ -826,6 +823,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
         cls: "format-assistant-muted format-assistant-hint",
         text: "Use Refresh or Use to capture the latest editor selection."
       });
+      this.renderSelectionControls(panel);
       return;
     }
     panel.createEl("pre", {
@@ -836,6 +834,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       cls: "format-assistant-muted format-assistant-hint",
       text: "Use Refresh or Use to capture the latest editor selection."
     });
+    this.renderSelectionControls(panel);
   }
   renderModeSelector(root) {
     const panel = root.createDiv({ cls: "format-assistant-inline-field" });
@@ -901,24 +900,6 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       clearButton.disabled = !this.manualInput;
     });
   }
-  renderActualInput(root) {
-    const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-actual-input" });
-    const header = panel.createDiv({ cls: "format-assistant-section-header" });
-    header.createEl("h3", { text: "Actual Input" });
-    header.createSpan({
-      cls: "format-assistant-muted",
-      text: `Source: ${this.actualInput.source ? this.formatInputSource(this.actualInput.source) : "None"}`
-    });
-    panel.createDiv({
-      cls: "format-assistant-context-meta",
-      text: `${this.actualInput.chars} chars / ${this.actualInput.words} words / ${this.actualInput.lines} lines`
-    });
-    const previewText = this.actualInput.text ? `${this.actualInput.text}${this.actualInput.truncated ? "\n... truncated" : ""}` : "No input resolved yet. Click Generate to confirm what will be sent.";
-    panel.createEl("pre", {
-      cls: "format-assistant-actual-input-preview",
-      text: previewText
-    });
-  }
   renderInput(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Instruction" });
@@ -972,8 +953,8 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       void this.removeSelectedPreset();
     });
   }
-  renderSelectionControls(root) {
-    const panel = root.createDiv({ cls: "format-assistant-action-group" });
+  renderSelectionControls(parent) {
+    const panel = parent.createDiv({ cls: "format-assistant-selection-controls" });
     panel.createEl("h3", { text: "Selection" });
     const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
     const useButton = buttons.createEl("button", { text: "Use" });
@@ -1097,7 +1078,6 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       new import_obsidian3.Notice("No input text. Select text in an editor or paste text into Manual Input.");
       return;
     }
-    this.actualInput = this.createActualInputSummary(input.source, input.text);
     const validationError = this.plugin.validateApiSettings();
     if (validationError) {
       this.setError(validationError);
@@ -1323,19 +1303,6 @@ ${this.outputText}`,
       text: this.selectionContext.text.trim(),
       source: "selection",
       currentFileName: (_g = this.selectionContext.fileName) != null ? _g : void 0
-    };
-  }
-  createActualInputSummary(source, text) {
-    const normalized = text.trim();
-    const previewLimit = 500;
-    const truncated = normalized.length > previewLimit;
-    return {
-      source,
-      text: truncated ? normalized.slice(0, previewLimit) : normalized,
-      chars: normalized.length,
-      words: this.countWords(normalized),
-      lines: this.countLines(normalized),
-      truncated
     };
   }
   getCurrentInputSourceLabel() {

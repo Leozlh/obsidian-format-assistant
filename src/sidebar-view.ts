@@ -38,15 +38,6 @@ interface GenerateInput {
 	currentFileName?: string;
 }
 
-interface ActualInputSummary {
-	source: SidebarInputSource | null;
-	text: string;
-	chars: number;
-	words: number;
-	lines: number;
-	truncated: boolean;
-}
-
 export class FormatAssistantSidebarView extends ItemView {
 	private plugin: FormatAssistantPlugin;
 	private mode: FormatMode;
@@ -61,7 +52,6 @@ export class FormatAssistantSidebarView extends ItemView {
 	private completedMs: number | null = null;
 	private lastGenerationSource: SidebarInputSource | null = null;
 	private lastInputLength = 0;
-	private actualInput: ActualInputSummary = this.createActualInputSummary(null, "");
 	private customInputEl: HTMLTextAreaElement | null = null;
 	private manualInputEl: HTMLTextAreaElement | null = null;
 	private selectedPresetId = "";
@@ -107,10 +97,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.renderContextPreview(root);
 		this.renderModeSelector(root);
 		this.renderManualInput(root);
-		this.renderActualInput(root);
 		this.renderInput(root);
 		this.renderPromptPresets(root);
-		this.renderSelectionControls(root);
 		this.renderActions(root);
 		this.renderStatus(root);
 	}
@@ -240,6 +228,7 @@ export class FormatAssistantSidebarView extends ItemView {
 				cls: "format-assistant-muted format-assistant-hint",
 				text: "Use Refresh or Use to capture the latest editor selection."
 			});
+			this.renderSelectionControls(panel);
 			return;
 		}
 
@@ -251,6 +240,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			cls: "format-assistant-muted format-assistant-hint",
 			text: "Use Refresh or Use to capture the latest editor selection."
 		});
+		this.renderSelectionControls(panel);
 	}
 
 	private renderModeSelector(root: HTMLElement): void {
@@ -326,30 +316,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 	}
 
-	private renderActualInput(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-actual-input" });
-		const header = panel.createDiv({ cls: "format-assistant-section-header" });
-		header.createEl("h3", { text: "Actual Input" });
-		header.createSpan({
-			cls: "format-assistant-muted",
-			text: `Source: ${this.actualInput.source ? this.formatInputSource(this.actualInput.source) : "None"}`
-		});
-
-		panel.createDiv({
-			cls: "format-assistant-context-meta",
-			text: `${this.actualInput.chars} chars / ${this.actualInput.words} words / ${this.actualInput.lines} lines`
-		});
-
-		const previewText = this.actualInput.text
-			? `${this.actualInput.text}${this.actualInput.truncated ? "\n... truncated" : ""}`
-			: "No input resolved yet. Click Generate to confirm what will be sent.";
-
-		panel.createEl("pre", {
-			cls: "format-assistant-actual-input-preview",
-			text: previewText
-		});
-	}
-
 	private renderInput(root: HTMLElement): void {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		panel.createEl("h3", { text: "Instruction" });
@@ -412,8 +378,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 	}
 
-	private renderSelectionControls(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-action-group" });
+	private renderSelectionControls(parent: HTMLElement): void {
+		const panel = parent.createDiv({ cls: "format-assistant-selection-controls" });
 		panel.createEl("h3", { text: "Selection" });
 		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
 
@@ -558,8 +524,6 @@ export class FormatAssistantSidebarView extends ItemView {
 			new Notice("No input text. Select text in an editor or paste text into Manual Input.");
 			return;
 		}
-
-		this.actualInput = this.createActualInputSummary(input.source, input.text);
 
 		const validationError = this.plugin.validateApiSettings();
 		if (validationError) {
@@ -824,24 +788,6 @@ export class FormatAssistantSidebarView extends ItemView {
 			text: this.selectionContext.text.trim(),
 			source: "selection",
 			currentFileName: this.selectionContext.fileName ?? undefined
-		};
-	}
-
-	private createActualInputSummary(
-		source: SidebarInputSource | null,
-		text: string
-	): ActualInputSummary {
-		const normalized = text.trim();
-		const previewLimit = 500;
-		const truncated = normalized.length > previewLimit;
-
-		return {
-			source,
-			text: truncated ? normalized.slice(0, previewLimit) : normalized,
-			chars: normalized.length,
-			words: this.countWords(normalized),
-			lines: this.countLines(normalized),
-			truncated
 		};
 	}
 

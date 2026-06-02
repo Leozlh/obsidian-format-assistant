@@ -134,28 +134,6 @@
 	line-height: 1.45;
 }
 
-.format-assistant-actual-input {
-	padding: 6px 0;
-	border-top: 1px solid var(--background-modifier-border);
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.format-assistant-actual-input-preview {
-	max-height: 14vh;
-	margin: 0;
-	padding: 8px;
-	overflow: auto;
-	white-space: pre-wrap;
-	word-break: break-word;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	background: var(--background-secondary);
-	color: var(--text-muted);
-	font-family: var(--font-monospace);
-	font-size: var(--font-smaller);
-	line-height: 1.45;
-}
-
 .format-assistant-hint {
 	line-height: 1.35;
 }
@@ -229,6 +207,20 @@
 }
 
 .format-assistant-action-group h3 {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.format-assistant-selection-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-top: 2px;
+}
+
+.format-assistant-selection-controls h3 {
 	margin: 0;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
