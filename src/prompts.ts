@@ -84,24 +84,12 @@ If the input is only several diary sentences, only format those sentences.
 不要扩写事实。
 只做格式整理、列表化、轻微措辞清理。
 Return only the final Markdown.`,
-	"course-note": `请将输入文本整理为课程笔记，严格使用以下 Markdown 结构：
-## 核心概念
-## 公式与条件
-## 典型题入口
-## 易错点
-## 待追问问题`,
-	"review-card": `请将输入文本压缩为 Obsidian callout 复习卡片，严格使用以下结构：
-> [!summary] 复习卡片
-> - 核心结论：
-> - 适用条件：
-> - 典型题型：
-> - 易错点：`,
-	"wiki-candidates": `请根据输入文本生成最多 10 条 Wiki 候选条目，严格输出 Markdown 表格：
-| 类型 | 候选标题 | 来源依据 | 为什么值得沉淀 |
-|---|---|---|---|
-
-类型只能从以下选项中选择：
-Concept, Formula, Method, Theorem, Problem, Comparison, Open Question`,
+	"course-note":
+		"整理为课程笔记：\n将内容整理成适合课程复习的 Markdown。优先突出主线、定义、关键公式、推导步骤、条件、易错点和复习抓手。不要扩写，不要补造知识点，不要添加 frontmatter、标题模板或总结套话。",
+	"review-card":
+		"压缩为复习卡片：\n将内容压缩成高密度复习版。优先保留结论、公式、条件、关键词、易错点和最短必要解释。尽量短、准、可扫读，但不要遗漏原文关键逻辑，不要编造内容。",
+	"wiki-candidates":
+		"提取 Wiki 候选条目：\n从内容中提取适合单独沉淀为 Wiki 的概念、公式、方法、定理、模型或实验术语。输出时按条目列出，每个条目只保留最小必要定义、用途或区分点。不要自动创建链接，不要扩写成完整文章。",
 	concise:
 		"请将输入文本精简为更短、更清楚的 Markdown，不丢失核心公式、适用条件、定义、限制和关键结论。",
 	custom: ""
