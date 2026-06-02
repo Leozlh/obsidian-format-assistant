@@ -1,5 +1,6 @@
 import {
 	Editor,
+	MarkdownFileInfo,
 	MarkdownView,
 	Notice,
 	Plugin,
@@ -21,9 +22,36 @@ import {
 
 export default class FormatAssistantPlugin extends Plugin {
 	settings: FormatAssistantSettings;
+	private lastMarkdownInfo: MarkdownFileInfo | null = null;
 
 	async onload() {
 		await this.loadSettings();
+
+		this.registerEvent(
+			this.app.workspace.on("editor-change", (editor, info) => {
+				this.rememberMarkdownInfo(editor, info);
+				this.refreshSidebarViews();
+			})
+		);
+
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", (leaf) => {
+				if (leaf?.view instanceof MarkdownView) {
+					this.rememberMarkdownInfo(leaf.view.editor, leaf.view);
+					this.refreshSidebarViews();
+				}
+			})
+		);
+
+		this.registerEvent(
+			this.app.workspace.on("file-open", () => {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (view) {
+					this.rememberMarkdownInfo(view.editor, view);
+					this.refreshSidebarViews();
+				}
+			})
+		);
 
 		this.registerView(
 			FORMAT_ASSISTANT_VIEW_TYPE,
@@ -121,6 +149,7 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	async sendSelectionToSidebar(editor: Editor, view: MarkdownView | null): Promise<void> {
+		this.rememberMarkdownInfo(editor, view);
 		const sidebar = await this.openSidebar();
 		if (!sidebar) {
 			return;
@@ -141,6 +170,10 @@ export default class FormatAssistantPlugin extends Plugin {
 				leaf.view.render();
 			}
 		}
+	}
+
+	getLastMarkdownInfo(): MarkdownFileInfo | null {
+		return this.lastMarkdownInfo;
 	}
 
 	validateApiSettings(): string | null {
@@ -198,6 +231,7 @@ export default class FormatAssistantPlugin extends Plugin {
 		view: MarkdownView | null,
 		mode: FormatMode
 	) {
+		this.rememberMarkdownInfo(editor, view);
 		const selection = editor.getSelection();
 		const selectionStart = editor.getCursor("from");
 		const selectionEnd = editor.getCursor("to");
@@ -240,6 +274,17 @@ export default class FormatAssistantPlugin extends Plugin {
 		} catch (error) {
 			new Notice(this.toUserError(error));
 		}
+	}
+
+	private rememberMarkdownInfo(editor: Editor, info: MarkdownFileInfo | null): void {
+		if (!info?.file) {
+			return;
+		}
+
+		this.lastMarkdownInfo = {
+			...info,
+			editor
+		};
 	}
 }
 

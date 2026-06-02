@@ -1003,11 +1003,12 @@ ${this.outputText}`,
     return true;
   }
   getActiveMarkdownInfo() {
+    var _a;
     const activeEditor = this.app.workspace.activeEditor;
     if (activeEditor == null ? void 0 : activeEditor.editor) {
       return activeEditor;
     }
-    return this.getActiveMarkdownView();
+    return (_a = this.plugin.getLastMarkdownInfo()) != null ? _a : this.getActiveMarkdownView();
   }
   setSelectionContextFromPreview(preview) {
     if (!preview.from || !preview.to) {
@@ -1102,8 +1103,35 @@ function positionsEqual(left, right) {
 
 // src/main.ts
 var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
+  constructor() {
+    super(...arguments);
+    this.lastMarkdownInfo = null;
+  }
   async onload() {
     await this.loadSettings();
+    this.registerEvent(
+      this.app.workspace.on("editor-change", (editor, info) => {
+        this.rememberMarkdownInfo(editor, info);
+        this.refreshSidebarViews();
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => {
+        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian4.MarkdownView) {
+          this.rememberMarkdownInfo(leaf.view.editor, leaf.view);
+          this.refreshSidebarViews();
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("file-open", () => {
+        const view = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+        if (view) {
+          this.rememberMarkdownInfo(view.editor, view);
+          this.refreshSidebarViews();
+        }
+      })
+    );
     this.registerView(
       FORMAT_ASSISTANT_VIEW_TYPE,
       (leaf) => new FormatAssistantSidebarView(leaf, this)
@@ -1183,6 +1211,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     view == null ? void 0 : view.focusInput();
   }
   async sendSelectionToSidebar(editor, view) {
+    this.rememberMarkdownInfo(editor, view);
     const sidebar = await this.openSidebar();
     if (!sidebar) {
       return;
@@ -1200,6 +1229,9 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
         leaf.view.render();
       }
     }
+  }
+  getLastMarkdownInfo() {
+    return this.lastMarkdownInfo;
   }
   validateApiSettings() {
     return validateApiSettings(this.settings);
@@ -1238,6 +1270,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
   }
   async formatSelection(editor, view, mode) {
     var _a;
+    this.rememberMarkdownInfo(editor, view);
     const selection = editor.getSelection();
     const selectionStart = editor.getCursor("from");
     const selectionEnd = editor.getCursor("to");
@@ -1275,6 +1308,15 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     } catch (error) {
       new import_obsidian4.Notice(this.toUserError(error));
     }
+  }
+  rememberMarkdownInfo(editor, info) {
+    if (!(info == null ? void 0 : info.file)) {
+      return;
+    }
+    this.lastMarkdownInfo = {
+      ...info,
+      editor
+    };
   }
 };
 function getActiveMarkdownView(plugin) {

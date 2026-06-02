@@ -615,7 +615,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			return activeEditor;
 		}
 
-		return this.getActiveMarkdownView();
+		return this.plugin.getLastMarkdownInfo() ?? this.getActiveMarkdownView();
 	}
 
 	private setSelectionContextFromPreview(preview: ActiveSelectionPreview): void {
