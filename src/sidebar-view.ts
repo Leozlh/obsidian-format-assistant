@@ -1,8 +1,6 @@
 import {
 	Editor,
-	EditorPosition,
 	ItemView,
-	MarkdownFileInfo,
 	MarkdownView,
 	Notice,
 	WorkspaceLeaf
@@ -11,32 +9,17 @@ import type FormatAssistantPlugin from "./main";
 import { FORMAT_MODE_LABELS, type FormatMode } from "./prompts";
 import { ConfirmModal } from "./preview-modal";
 import {
-	describeSelection,
-	getActiveSelectionPreview,
-	type ActiveSelectionPreview
-} from "./sidebar-context";
+	describeInput,
+	type CapturedInput,
+	type InputSource,
+	type VerifiedSelectionState
+} from "./selection-service";
 import {
 	createPromptPreset,
 	MAX_PROMPT_PRESETS
 } from "./sidebar-presets";
 
 export const FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
-
-interface SelectionContext {
-	text: string;
-	filePath: string | null;
-	fileName: string | null;
-	from: EditorPosition;
-	to: EditorPosition;
-}
-
-interface NoteFallbackContext {
-	text: string;
-	filePath: string | null;
-	fileName: string | null;
-}
-
-type SidebarInputSource = "selection" | "manual" | "note";
 
 const SIDEBAR_MODES: FormatMode[] = [
 	"obsidian-markdown",
@@ -46,7 +29,7 @@ const SIDEBAR_MODES: FormatMode[] = [
 
 interface GenerateInput {
 	text: string;
-	source: SidebarInputSource;
+	source: InputSource;
 	currentFileName?: string;
 }
 
@@ -55,15 +38,13 @@ export class FormatAssistantSidebarView extends ItemView {
 	private mode: FormatMode;
 	private manualInput = "";
 	private customInstruction = "";
-	private currentSelection: ActiveSelectionPreview | null = null;
-	private selectionContext: SelectionContext | null = null;
-	private noteFallbackContext: NoteFallbackContext | null = null;
+	private currentContext: CapturedInput | null = null;
 	private outputText = "";
 	private statusText = "";
 	private errorText = "";
 	private loading = false;
 	private completedMs: number | null = null;
-	private lastGenerationSource: SidebarInputSource | null = null;
+	private lastGenerationSource: InputSource | null = null;
 	private lastInputLength = 0;
 	private customInputEl: HTMLTextAreaElement | null = null;
 	private manualInputEl: HTMLTextAreaElement | null = null;
@@ -121,14 +102,13 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	refreshContextStatus(): void {
-		const info = this.getActiveMarkdownInfo();
-		const selection = info?.editor?.getSelection() ?? this.selectionContext?.text ?? "";
-		const activeName = this.selectionContext?.fileName
-			?? this.noteFallbackContext?.fileName
+		const info = this.plugin.selectionService.getActiveMarkdownInfo();
+		const selection = info?.editor?.getSelection() ?? "";
+		const activeName = this.currentContext?.fileName
 			?? info?.file?.basename
 			?? "No active Markdown file";
 
-		if (!this.selectionContext && !this.noteFallbackContext) {
+		if (!this.currentContext) {
 			this.statusText = selection.trim()
 				? `Active file: ${activeName}. Current editor has a selection.`
 				: `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
@@ -148,7 +128,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		if (showNotice) {
 			new Notice(
-				this.noteFallbackContext
+				this.currentContext?.source === "note"
 					? "Current note body sent to Format Assistant."
 					: "Selection sent to Format Assistant."
 			);
@@ -156,9 +136,8 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	setContextFromEditor(editor: Editor, view: MarkdownView | null, showNotice: boolean): void {
-		const selectedText = editor.getSelection();
-		this.currentSelection = getActiveSelectionPreview(view ?? this.app.workspace.activeEditor);
-		if (!selectedText.trim()) {
+		const context = this.plugin.selectionService.captureFromEditor(editor, view);
+		if (!context) {
 			this.setError("Please select text first.");
 			if (showNotice) {
 				new Notice("Please select text first.");
@@ -166,16 +145,9 @@ export class FormatAssistantSidebarView extends ItemView {
 			return;
 		}
 
-		this.selectionContext = {
-			text: selectedText,
-			filePath: view?.file?.path ?? null,
-			fileName: view?.file?.basename ?? null,
-			from: editor.getCursor("from"),
-			to: editor.getCursor("to")
-		};
-		this.noteFallbackContext = null;
+		this.currentContext = context;
 		this.errorText = "";
-		this.statusText = `Captured ${describeSelection(selectedText)}.`;
+		this.statusText = `Captured ${describeInput(context.text)}.`;
 		this.render();
 
 		if (showNotice) {
@@ -446,9 +418,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		const clearButton = buttons.createEl("button", { text: "Clear" });
 		clearButton.addEventListener("click", () => {
-			this.currentSelection = null;
-			this.selectionContext = null;
-			this.noteFallbackContext = null;
+			this.currentContext = null;
 			this.statusText = "Context cleared.";
 			this.errorText = "";
 			this.completedMs = null;
@@ -698,181 +668,38 @@ export class FormatAssistantSidebarView extends ItemView {
 		new Notice("Result inserted below selection.");
 	}
 
-	private getVerifiedSelectionState(): {
-		editor: Editor;
-		from: EditorPosition;
-		to: EditorPosition;
-	} | null {
-		const info = this.getActiveMarkdownInfo();
-		if (!info?.editor) {
-			this.setError("No active Markdown editor.");
-			new Notice("No active Markdown editor.");
+	private getVerifiedSelectionState(): VerifiedSelectionState | null {
+		const result = this.plugin.selectionService.verifyCapturedSelection(this.currentContext);
+		if (!result.state) {
+			const message = result.error ?? "Please capture a selection first.";
+			this.setError(message);
+			new Notice(message);
 			return null;
 		}
 
-		if (!this.selectionContext) {
-			this.setError("Please capture a selection first.");
-			new Notice("Please capture a selection first.");
-			return null;
-		}
-
-		if (this.selectionContext.filePath && info.file?.path !== this.selectionContext.filePath) {
-			this.setError("Active file changed. Please refresh selection.");
-			new Notice("Active file changed. Please refresh selection.");
-			return null;
-		}
-
-		const currentSelection = info.editor.getSelection();
-		const currentFrom = info.editor.getCursor("from");
-		const currentTo = info.editor.getCursor("to");
-		if (!currentSelection.trim()) {
-			this.setError("Current editor has no selection. Please refresh selection.");
-			new Notice("Current editor has no selection. Please refresh selection.");
-			return null;
-		}
-
-		if (
-			currentSelection !== this.selectionContext.text ||
-			!positionsEqual(currentFrom, this.selectionContext.from) ||
-			!positionsEqual(currentTo, this.selectionContext.to)
-		) {
-			this.setError("Selection changed. Please click Refresh selection before replacing.");
-			new Notice("Selection changed. Please click Refresh selection before replacing.");
-			return null;
-		}
-
-		return {
-			editor: info.editor,
-			from: currentFrom,
-			to: currentTo
-		};
-	}
-
-	private getActiveMarkdownView(): MarkdownView | null {
-		return this.app.workspace.getActiveViewOfType(MarkdownView);
+		return result.state;
 	}
 
 	private captureCurrentSelection(showNotice: boolean): boolean {
-		const info = this.getActiveMarkdownInfo();
-		if (!info?.editor) {
-			this.currentSelection = null;
-			this.selectionContext = null;
-			this.noteFallbackContext = null;
-			this.setError("Switch to a Markdown editor first.");
-			if (showNotice) {
-				new Notice("Switch to a Markdown editor first.");
-			}
-			return false;
-		}
-
-		const preview = getActiveSelectionPreview(info);
-		this.currentSelection = preview;
-
-		if (!preview.text.trim()) {
-			this.selectionContext = null;
-			if (this.captureCurrentNoteFallback(info, showNotice)) {
-				return true;
-			}
-
-			this.statusText = "Select text first or open a note with body text.";
+		const result = this.plugin.selectionService.captureCurrentContext();
+		if (!result.input) {
+			this.currentContext = null;
+			const message = result.error ?? "Select text first or open a note with body text.";
+			this.statusText = message;
 			this.errorText = "";
 			this.render();
 			if (showNotice) {
-				new Notice("Select text first or open a note with body text.");
+				new Notice(message);
 			}
 			return false;
 		}
 
-		this.setSelectionContextFromPreview(preview);
-		this.noteFallbackContext = null;
-		this.statusText = `Captured ${describeSelection(preview.text)}.`;
+		this.currentContext = result.input;
+		this.statusText = result.input.source === "note"
+			? `Using current note fallback: ${describeInput(result.input.text)}.`
+			: `Captured ${describeInput(result.input.text)}.`;
 		this.errorText = "";
 		this.render();
-		return true;
-	}
-
-	private getActiveMarkdownInfo(): MarkdownFileInfo | null {
-		const activeEditor = this.app.workspace.activeEditor;
-		if (activeEditor?.editor) {
-			return activeEditor;
-		}
-
-		return this.plugin.getLastMarkdownInfo() ?? this.getActiveMarkdownView();
-	}
-
-	private setSelectionContextFromPreview(preview: ActiveSelectionPreview): void {
-		if (!preview.from || !preview.to) {
-			this.selectionContext = null;
-			return;
-		}
-
-		this.selectionContext = {
-			text: preview.text,
-			filePath: preview.filePath,
-			fileName: preview.fileName,
-			from: preview.from,
-			to: preview.to
-		};
-		this.noteFallbackContext = null;
-	}
-
-	private setError(message: string): void {
-		this.errorText = message;
-		this.statusText = "";
-		this.render();
-	}
-
-	private getDisplayedContextPreview(): ActiveSelectionPreview {
-		if (this.currentSelection?.text.trim()) {
-			return this.currentSelection;
-		}
-
-		if (this.noteFallbackContext?.text.trim()) {
-			return {
-				fileName: this.noteFallbackContext.fileName ?? "No active Markdown file",
-				filePath: this.noteFallbackContext.filePath,
-				text: this.noteFallbackContext.text,
-				wordCount: this.countWords(this.noteFallbackContext.text),
-				characterCount: this.noteFallbackContext.text.length,
-				from: null,
-				to: null
-			};
-		}
-
-		return getActiveSelectionPreview(this.getActiveMarkdownInfo());
-	}
-
-	private captureCurrentNoteFallback(info: MarkdownFileInfo, showNotice: boolean): boolean {
-		if (!info.editor) {
-			return false;
-		}
-
-		const cleanedText = cleanCurrentNoteBody(info.editor.getValue());
-		if (!cleanedText.trim()) {
-			this.currentSelection = getActiveSelectionPreview(info);
-			this.noteFallbackContext = null;
-			return false;
-		}
-
-		this.currentSelection = {
-			fileName: info.file?.basename ?? "No active Markdown file",
-			filePath: info.file?.path ?? null,
-			text: cleanedText,
-			wordCount: this.countWords(cleanedText),
-			characterCount: cleanedText.length,
-			from: null,
-			to: null
-		};
-		this.selectionContext = null;
-		this.noteFallbackContext = {
-			text: cleanedText,
-			filePath: info.file?.path ?? null,
-			fileName: info.file?.basename ?? null
-		};
-		this.statusText = `Using current note fallback: ${describeSelection(cleanedText)}.`;
-		this.errorText = "";
-		this.render();
-
 		return true;
 	}
 
@@ -882,34 +709,19 @@ export class FormatAssistantSidebarView extends ItemView {
 			return {
 				text: manualText,
 				source: "manual",
-				currentFileName: this.getActiveMarkdownInfo()?.file?.basename ?? undefined
+				currentFileName: this.plugin.selectionService.getActiveMarkdownInfo()?.file?.basename ?? undefined
 			};
 		}
 
-		if (!this.selectionContext?.text.trim()) {
+		if (!this.currentContext?.text.trim()) {
 			this.captureCurrentSelection(false);
-			if (
-				this.currentSelection?.text.trim() &&
-				this.currentSelection.from &&
-				this.currentSelection.to
-			) {
-				this.setSelectionContextFromPreview(this.currentSelection);
-			}
 		}
 
-		if (this.selectionContext?.text.trim()) {
+		if (this.currentContext?.text.trim()) {
 			return {
-				text: this.selectionContext.text.trim(),
-				source: "selection",
-				currentFileName: this.selectionContext.fileName ?? undefined
-			};
-		}
-
-		if (this.noteFallbackContext?.text.trim()) {
-			return {
-				text: this.noteFallbackContext.text.trim(),
-				source: "note",
-				currentFileName: this.noteFallbackContext.fileName ?? undefined
+				text: this.currentContext.text.trim(),
+				source: this.currentContext.source,
+				currentFileName: this.currentContext.fileName ?? undefined
 			};
 		}
 
@@ -921,18 +733,18 @@ export class FormatAssistantSidebarView extends ItemView {
 			return "Manual input";
 		}
 
-		if (this.selectionContext?.text.trim()) {
+		if (this.currentContext?.source === "selection" && this.currentContext.text.trim()) {
 			return "Captured selection";
 		}
 
-		if (this.noteFallbackContext?.text.trim()) {
+		if (this.currentContext?.source === "note" && this.currentContext.text.trim()) {
 			return "Current note fallback";
 		}
 
 		return "None";
 	}
 
-	private formatInputSource(source: SidebarInputSource): string {
+	private formatInputSource(source: InputSource): string {
 		if (source === "manual") {
 			return "Manual input";
 		}
@@ -942,6 +754,20 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		return "Captured selection";
+	}
+
+	private setError(message: string): void {
+		this.errorText = message;
+		this.statusText = "";
+		this.render();
+	}
+
+	private getDisplayedContextPreview(): CapturedInput {
+		if (this.currentContext?.text.trim()) {
+			return this.currentContext;
+		}
+
+		return this.plugin.selectionService.getActiveSelectionPreview();
 	}
 
 	private countWords(text: string): number {
@@ -1049,20 +875,4 @@ export class FormatAssistantSidebarView extends ItemView {
 			(preset) => preset.id === this.selectedPresetId
 		);
 	}
-}
-
-function positionsEqual(left: EditorPosition, right: EditorPosition): boolean {
-	return left.line === right.line && left.ch === right.ch;
-}
-
-function cleanCurrentNoteBody(text: string): string {
-	return stripLeadingHeading(stripFrontmatter(text)).trim();
-}
-
-function stripFrontmatter(text: string): string {
-	return text.replace(/^\s*---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "");
-}
-
-function stripLeadingHeading(text: string): string {
-	return text.replace(/^\s*# [^\r\n]*(?:\r?\n|$)/, "");
 }

@@ -20,12 +20,14 @@ import {
 	FORMAT_ASSISTANT_VIEW_TYPE,
 	FormatAssistantSidebarView
 } from "./sidebar-view";
+import { SelectionService } from "./selection-service";
 
 export default class FormatAssistantPlugin extends Plugin {
 	settings: FormatAssistantSettings;
-	private lastMarkdownInfo: MarkdownFileInfo | null = null;
+	selectionService: SelectionService;
 
 	async onload() {
+		this.selectionService = new SelectionService(this.app);
 		await this.loadSettings();
 
 		this.registerEvent(
@@ -189,7 +191,7 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	getLastMarkdownInfo(): MarkdownFileInfo | null {
-		return this.lastMarkdownInfo;
+		return this.selectionService.getLastMarkdownInfo();
 	}
 
 	validateApiSettings(): string | null {
@@ -295,13 +297,6 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	private rememberMarkdownInfo(editor: Editor, info: MarkdownFileInfo | null): void {
-		if (!info?.file) {
-			return;
-		}
-
-		this.lastMarkdownInfo = {
-			...info,
-			editor
-		};
+		this.selectionService.rememberMarkdownInfo(editor, info);
 	}
 }
