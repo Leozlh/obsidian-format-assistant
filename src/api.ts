@@ -1,5 +1,5 @@
 import { buildMessages, type PromptOptions, type ChatMessage } from "./prompts";
-import type { FormatAssistantSettings } from "./settings";
+import type { FormatAssistantSettings } from "./settings-types";
 
 interface ChatCompletionResponse {
 	choices?: Array<{

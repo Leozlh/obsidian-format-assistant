@@ -1,4 +1,4 @@
-import type { FormatAssistantSettings, ProviderType } from "./settings";
+import type { FormatAssistantSettings, ProviderType } from "./settings-types";
 
 export interface ApiProfile {
 	id: string;

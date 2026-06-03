@@ -2,98 +2,12 @@ import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type FormatAssistantPlugin from "./main";
 import {
 	createApiProfileFromSettings,
-	MAX_API_PROFILES,
-	normalizeApiProfiles,
-	type ApiProfile
+	MAX_API_PROFILES
 } from "./api-profiles";
-import { BASE_SYSTEM_PROMPT, type FormatMode } from "./prompts";
-import { normalizePromptPresets, type PromptPreset } from "./sidebar-presets";
-
-export type ProviderType = "openai-compatible";
-
-export interface FormatAssistantSettings {
-	baseUrl: string;
-	apiKey: string;
-	model: string;
-	maxTokens: number;
-	temperature: number;
-	providerType: ProviderType;
-	systemPrompt: string;
-	previewBeforeReplace: boolean;
-	timeoutSeconds: number;
-	sidebarDefaultMode: FormatMode;
-	autoUseSelectionOnSidebarOpen: boolean;
-	includeCurrentFileNameInPrompt: boolean;
-	includeFullCurrentNote: boolean;
-	promptPresets: PromptPreset[];
-	apiProfiles: ApiProfile[];
-	activeApiProfileId: string;
-}
-
-export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
-
-export const DEFAULT_SETTINGS: FormatAssistantSettings = {
-	baseUrl: "https://api.openai.com/v1",
-	apiKey: "",
-	model: "gpt-4o-mini",
-	maxTokens: 1200,
-	temperature: 0.2,
-	providerType: "openai-compatible",
-	systemPrompt: DEFAULT_SYSTEM_PROMPT,
-	previewBeforeReplace: true,
-	timeoutSeconds: 30,
-	sidebarDefaultMode: "obsidian-markdown",
-	autoUseSelectionOnSidebarOpen: false,
-	includeCurrentFileNameInPrompt: true,
-	includeFullCurrentNote: false,
-	promptPresets: [],
-	apiProfiles: [],
-	activeApiProfileId: ""
-};
-
-export function normalizeSettings(data: unknown): FormatAssistantSettings {
-	const raw = typeof data === "object" && data !== null
-		? data as Partial<FormatAssistantSettings>
-		: {};
-
-	return {
-		...DEFAULT_SETTINGS,
-		...raw,
-		promptPresets: normalizePromptPresets(raw.promptPresets),
-		apiProfiles: normalizeApiProfiles(raw.apiProfiles),
-		activeApiProfileId: typeof raw.activeApiProfileId === "string"
-			? raw.activeApiProfileId
-			: ""
-	};
-}
-
-export function validateApiSettings(settings: FormatAssistantSettings): string | null {
-	if (!settings.baseUrl.trim()) {
-		return "API Base URL is required.";
-	}
-
-	if (settings.baseUrl.replace(/\/+$/, "").endsWith("/chat/completions")) {
-		return "Base URL should not include /chat/completions. Use the API root such as https://example.com/v1.";
-	}
-
-	if (!settings.apiKey.trim()) {
-		return "API key is required.";
-	}
-
-	if (!settings.model.trim()) {
-		return "Model is required.";
-	}
-
-	if (settings.maxTokens < 1) {
-		return "Max Tokens must be greater than 0.";
-	}
-
-	if (settings.timeoutSeconds < 1) {
-		return "Timeout seconds must be greater than 0.";
-	}
-
-	return null;
-}
+import {
+	DEFAULT_SYSTEM_PROMPT,
+	type ProviderType
+} from "./settings-types";
 
 export class FormatAssistantSettingTab extends PluginSettingTab {
 	plugin: FormatAssistantPlugin;
@@ -267,7 +181,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Include full current note")
-			.setDesc("Not yet implemented. Currently only the captured selection is sent.")
+			.setDesc("When enabled, show a reminder that only the active note can be used as fallback. The plugin never scans the vault.")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.includeFullCurrentNote)
@@ -275,7 +189,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						this.plugin.settings.includeFullCurrentNote = value;
 						await this.plugin.saveSettings();
 						if (value) {
-							new Notice("Full-note context is not implemented yet. Only the captured selection will be sent.");
+							new Notice("Current note fallback only uses the active note. The vault is never scanned.");
 						}
 					})
 			);

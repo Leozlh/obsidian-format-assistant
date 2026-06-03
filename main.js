@@ -490,7 +490,7 @@ function toPresetName(content) {
   return firstLine.length > 28 ? `${firstLine.slice(0, 28)}...` : firstLine;
 }
 
-// src/settings.ts
+// src/settings-types.ts
 var DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 var DEFAULT_SETTINGS = {
   baseUrl: "https://api.openai.com/v1",
@@ -541,6 +541,8 @@ function validateApiSettings(settings) {
   }
   return null;
 }
+
+// src/settings.ts
 var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -634,12 +636,12 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Include full current note").setDesc("Not yet implemented. Currently only the captured selection is sent.").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Include full current note").setDesc("When enabled, show a reminder that only the active note can be used as fallback. The plugin never scans the vault.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.includeFullCurrentNote).onChange(async (value) => {
         this.plugin.settings.includeFullCurrentNote = value;
         await this.plugin.saveSettings();
         if (value) {
-          new import_obsidian2.Notice("Full-note context is not implemented yet. Only the captured selection will be sent.");
+          new import_obsidian2.Notice("Current note fallback only uses the active note. The vault is never scanned.");
         }
       })
     );
@@ -789,6 +791,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.lastInputLength = 0;
     this.customInputEl = null;
     this.manualInputEl = null;
+    this.contextPanelEl = null;
     this.selectedPresetId = "";
     this.plugin = plugin;
     this.mode = SIDEBAR_MODES.includes(plugin.settings.sidebarDefaultMode) ? plugin.settings.sidebarDefaultMode : "obsidian-markdown";
@@ -817,6 +820,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass("format-assistant-sidebar");
+    this.contextPanelEl = null;
     this.renderHeader(root);
     this.renderApiProfileSelector(root);
     this.renderContextPreview(root);
@@ -835,7 +839,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     if (!this.selectionContext && !this.noteFallbackContext) {
       this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
     }
-    this.render();
+    this.refreshContextPreview();
   }
   focusInput() {
     var _a;
@@ -918,6 +922,10 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
   }
   renderContextPreview(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
+    this.contextPanelEl = panel;
+    this.renderContextPreviewContent(panel);
+  }
+  renderContextPreviewContent(panel) {
     const header = panel.createDiv({ cls: "format-assistant-section-header" });
     header.createEl("h3", { text: "Context Preview" });
     const preview = this.getDisplayedContextPreview();
@@ -949,6 +957,14 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
     });
     this.renderSelectionControls(panel);
+  }
+  refreshContextPreview() {
+    if (!this.contextPanelEl) {
+      this.render();
+      return;
+    }
+    this.contextPanelEl.empty();
+    this.renderContextPreviewContent(this.contextPanelEl);
   }
   renderModeSelector(root) {
     const panel = root.createDiv({ cls: "format-assistant-inline-field" });
@@ -1625,14 +1641,14 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     this.registerEvent(
       this.app.workspace.on("editor-change", (editor, info) => {
         this.rememberMarkdownInfo(editor, info);
-        this.refreshSidebarViews();
+        this.refreshSidebarContextViews();
       })
     );
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
         if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian4.MarkdownView) {
           this.rememberMarkdownInfo(leaf.view.editor, leaf.view);
-          this.refreshSidebarViews();
+          this.refreshSidebarContextViews();
         }
       })
     );
@@ -1641,7 +1657,7 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
         const view = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
         if (view) {
           this.rememberMarkdownInfo(view.editor, view);
-          this.refreshSidebarViews();
+          this.refreshSidebarContextViews();
         }
       })
     );
@@ -1746,6 +1762,13 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     for (const leaf of this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE)) {
       if (leaf.view instanceof FormatAssistantSidebarView) {
         leaf.view.render();
+      }
+    }
+  }
+  refreshSidebarContextViews() {
+    for (const leaf of this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE)) {
+      if (leaf.view instanceof FormatAssistantSidebarView) {
+        leaf.view.refreshContextStatus();
       }
     }
   }

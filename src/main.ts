@@ -10,12 +10,12 @@ import { applyApiProfile, type ApiProfile } from "./api-profiles";
 import { callChatCompletions } from "./api";
 import { FORMAT_TASKS, type FormatMode } from "./prompts";
 import { PreviewModal } from "./preview-modal";
+import { FormatAssistantSettingTab } from "./settings";
 import {
-	FormatAssistantSettingTab,
 	normalizeSettings,
 	type FormatAssistantSettings,
 	validateApiSettings
-} from "./settings";
+} from "./settings-types";
 import {
 	FORMAT_ASSISTANT_VIEW_TYPE,
 	FormatAssistantSidebarView
@@ -31,7 +31,7 @@ export default class FormatAssistantPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("editor-change", (editor, info) => {
 				this.rememberMarkdownInfo(editor, info);
-				this.refreshSidebarViews();
+				this.refreshSidebarContextViews();
 			})
 		);
 
@@ -39,7 +39,7 @@ export default class FormatAssistantPlugin extends Plugin {
 			this.app.workspace.on("active-leaf-change", (leaf) => {
 				if (leaf?.view instanceof MarkdownView) {
 					this.rememberMarkdownInfo(leaf.view.editor, leaf.view);
-					this.refreshSidebarViews();
+					this.refreshSidebarContextViews();
 				}
 			})
 		);
@@ -49,7 +49,7 @@ export default class FormatAssistantPlugin extends Plugin {
 				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (view) {
 					this.rememberMarkdownInfo(view.editor, view);
-					this.refreshSidebarViews();
+					this.refreshSidebarContextViews();
 				}
 			})
 		);
@@ -176,6 +176,14 @@ export default class FormatAssistantPlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE)) {
 			if (leaf.view instanceof FormatAssistantSidebarView) {
 				leaf.view.render();
+			}
+		}
+	}
+
+	refreshSidebarContextViews(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE)) {
+			if (leaf.view instanceof FormatAssistantSidebarView) {
+				leaf.view.refreshContextStatus();
 			}
 		}
 	}

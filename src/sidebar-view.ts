@@ -67,6 +67,7 @@ export class FormatAssistantSidebarView extends ItemView {
 	private lastInputLength = 0;
 	private customInputEl: HTMLTextAreaElement | null = null;
 	private manualInputEl: HTMLTextAreaElement | null = null;
+	private contextPanelEl: HTMLElement | null = null;
 	private selectedPresetId = "";
 
 	constructor(leaf: WorkspaceLeaf, plugin: FormatAssistantPlugin) {
@@ -106,6 +107,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		const root = this.contentEl;
 		root.empty();
 		root.addClass("format-assistant-sidebar");
+		this.contextPanelEl = null;
 
 		this.renderHeader(root);
 		this.renderApiProfileSelector(root);
@@ -132,7 +134,7 @@ export class FormatAssistantSidebarView extends ItemView {
 				: `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
 		}
 
-		this.render();
+		this.refreshContextPreview();
 	}
 
 	focusInput(): void {
@@ -230,6 +232,11 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private renderContextPreview(root: HTMLElement): void {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
+		this.contextPanelEl = panel;
+		this.renderContextPreviewContent(panel);
+	}
+
+	private renderContextPreviewContent(panel: HTMLElement): void {
 		const header = panel.createDiv({ cls: "format-assistant-section-header" });
 		header.createEl("h3", { text: "Context Preview" });
 		const preview = this.getDisplayedContextPreview();
@@ -265,6 +272,16 @@ export class FormatAssistantSidebarView extends ItemView {
 			text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
 		});
 		this.renderSelectionControls(panel);
+	}
+
+	refreshContextPreview(): void {
+		if (!this.contextPanelEl) {
+			this.render();
+			return;
+		}
+
+		this.contextPanelEl.empty();
+		this.renderContextPreviewContent(this.contextPanelEl);
 	}
 
 	private renderModeSelector(root: HTMLElement): void {
