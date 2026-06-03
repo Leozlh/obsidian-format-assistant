@@ -1151,20 +1151,8 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       text: `Input source: ${this.getCurrentInputSourceLabel()}`
     });
     const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-    const useButton = buttons.createEl("button", { text: "Use manual input" });
-    useButton.disabled = !this.manualInput.trim();
     const clearButton = buttons.createEl("button", { text: "Clear manual input" });
     clearButton.disabled = !this.manualInput;
-    useButton.addEventListener("click", () => {
-      if (!this.manualInput.trim()) {
-        new import_obsidian4.Notice("Manual input is empty.");
-        return;
-      }
-      this.statusText = "Input source: Manual input.";
-      this.errorText = "";
-      this.render();
-      new import_obsidian4.Notice("Manual input will be used for Generate.");
-    });
     clearButton.addEventListener("click", () => {
       this.manualInput = "";
       this.statusText = "Manual input cleared.";
@@ -1175,7 +1163,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.manualInput = (_b = (_a = this.manualInputEl) == null ? void 0 : _a.value) != null ? _b : "";
       manualStats.setText(this.getManualInputStatsText());
       sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
-      useButton.disabled = !this.manualInput.trim();
       clearButton.disabled = !this.manualInput;
     });
   }

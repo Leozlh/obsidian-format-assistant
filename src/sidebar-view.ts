@@ -310,22 +310,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 
 		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-		const useButton = buttons.createEl("button", { text: "Use manual input" });
-		useButton.disabled = !this.manualInput.trim();
 		const clearButton = buttons.createEl("button", { text: "Clear manual input" });
 		clearButton.disabled = !this.manualInput;
-
-		useButton.addEventListener("click", () => {
-			if (!this.manualInput.trim()) {
-				new Notice("Manual input is empty.");
-				return;
-			}
-
-			this.statusText = "Input source: Manual input.";
-			this.errorText = "";
-			this.render();
-			new Notice("Manual input will be used for Generate.");
-		});
 
 		clearButton.addEventListener("click", () => {
 			this.manualInput = "";
@@ -337,7 +323,6 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.manualInput = this.manualInputEl?.value ?? "";
 			manualStats.setText(this.getManualInputStatsText());
 			sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
-			useButton.disabled = !this.manualInput.trim();
 			clearButton.disabled = !this.manualInput;
 		});
 	}
