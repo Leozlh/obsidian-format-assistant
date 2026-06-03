@@ -7,6 +7,8 @@ import type {
 	MarkdownView
 } from "obsidian";
 import {
+	countLines,
+	countWords,
 	describeInput,
 	type CapturedInput,
 	SelectionService
@@ -150,6 +152,20 @@ describe("SelectionService", () => {
 		expect(result.state?.to).toEqual({ line: 1, ch: 9 });
 	});
 
+	it("uses active editor file details when capturing from editor without a view", () => {
+		const editor = createEditor({
+			selection: "selected",
+			from: { line: 0, ch: 0 },
+			to: { line: 0, ch: 8 }
+		});
+		const service = createService(createMarkdownInfo(editor, "Notes/Fallback.md"));
+
+		const result = service.captureFromEditor(editor, null);
+
+		expect(result?.filePath).toBe("Notes/Fallback.md");
+		expect(result?.fileName).toBe("Fallback");
+	});
+
 	it("rejects replacement when the selected text changed", () => {
 		const editor = createEditor({
 			selection: "changed",
@@ -198,5 +214,11 @@ describe("SelectionService", () => {
 
 	it("describes input with character and word counts", () => {
 		expect(describeInput("one two")).toBe("7 chars / 2 words");
+	});
+
+	it("exports shared text counters", () => {
+		expect(countWords("one two")).toBe(2);
+		expect(countLines("one\ntwo")).toBe(2);
+		expect(countLines("")).toBe(0);
 	});
 });

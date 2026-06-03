@@ -793,10 +793,11 @@ var SelectionService = class {
     if (!text.trim()) {
       return null;
     }
+    const info = view != null ? view : this.app.workspace.activeEditor;
     return {
       source: "selection",
-      fileName: (_b = (_a = view == null ? void 0 : view.file) == null ? void 0 : _a.basename) != null ? _b : null,
-      filePath: (_d = (_c = view == null ? void 0 : view.file) == null ? void 0 : _c.path) != null ? _d : null,
+      fileName: (_b = (_a = info == null ? void 0 : info.file) == null ? void 0 : _a.basename) != null ? _b : null,
+      filePath: (_d = (_c = info == null ? void 0 : info.file) == null ? void 0 : _c.path) != null ? _d : null,
       text,
       wordCount: countWords(text),
       characterCount: text.length,
@@ -899,6 +900,12 @@ var SelectionService = class {
 function describeInput(text) {
   return `${text.length} chars / ${countWords(text)} words`;
 }
+function countWords(text) {
+  return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+}
+function countLines(text) {
+  return text.trim() ? text.split(/\r?\n/).length : 0;
+}
 function cleanCurrentNoteBody(text) {
   return stripLeadingHeading(stripFrontmatter(text)).trim();
 }
@@ -907,9 +914,6 @@ function stripFrontmatter(text) {
 }
 function stripLeadingHeading(text) {
   return text.replace(/^\s*# [^\r\n]*(?:\r?\n|$)/, "");
-}
-function countWords(text) {
-  return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 }
 function positionsEqual(left, right) {
   return left.line === right.line && left.ch === right.ch;
@@ -934,7 +938,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.loading = false;
     this.completedMs = null;
     this.lastGenerationSource = null;
-    this.lastInputLength = 0;
     this.customInputEl = null;
     this.manualInputEl = null;
     this.contextPanelEl = null;
@@ -1072,7 +1075,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     meta.createSpan({ text: `Current file: ${fileName}` });
     meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
     meta.createSpan({
-      text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${this.countLines(preview.text)} lines`
+      text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
     });
     if (!preview.text.trim()) {
       panel.createDiv({
@@ -1130,7 +1133,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     header.createEl("h3", { text: "Manual Input" });
     const manualStats = header.createSpan({
       cls: "format-assistant-muted",
-      text: `Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
+      text: this.getManualInputStatsText()
     });
     this.manualInputEl = panel.createEl("textarea", {
       cls: "format-assistant-textarea format-assistant-manual-input",
@@ -1139,13 +1142,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       }
     });
     this.manualInputEl.value = this.manualInput;
-    this.manualInputEl.addEventListener("input", () => {
-      var _a, _b;
-      this.manualInput = (_b = (_a = this.manualInputEl) == null ? void 0 : _a.value) != null ? _b : "";
-      manualStats.setText(
-        `Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
-      );
-    });
     panel.createDiv({
       cls: "format-assistant-muted format-assistant-hint",
       text: "Manual input takes priority over captured selection when non-empty."
@@ -1175,6 +1171,9 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.render();
     });
     this.manualInputEl.addEventListener("input", () => {
+      var _a, _b;
+      this.manualInput = (_b = (_a = this.manualInputEl) == null ? void 0 : _a.value) != null ? _b : "";
+      manualStats.setText(this.getManualInputStatsText());
       sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
       useButton.disabled = !this.manualInput.trim();
       clearButton.disabled = !this.manualInput;
@@ -1369,7 +1368,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.statusText = "Generating...";
     this.completedMs = null;
     this.lastGenerationSource = input.source;
-    this.lastInputLength = input.text.length;
     this.render();
     const startedAt = performance.now();
     try {
@@ -1550,11 +1548,8 @@ ${this.outputText}`,
     }
     return this.plugin.selectionService.getActiveSelectionPreview();
   }
-  countWords(text) {
-    return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
-  }
-  countLines(text) {
-    return text.trim() ? text.split(/\r?\n/).length : 0;
+  getManualInputStatsText() {
+    return `Manual input: ${this.manualInput.length} chars / ${countWords(this.manualInput)} words / ${countLines(this.manualInput)} lines`;
   }
   openSettings() {
     var _a, _b;

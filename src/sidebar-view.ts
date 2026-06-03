@@ -9,6 +9,8 @@ import type FormatAssistantPlugin from "./main";
 import { FORMAT_MODE_LABELS, type FormatMode } from "./prompts";
 import { ConfirmModal } from "./preview-modal";
 import {
+	countLines,
+	countWords,
 	describeInput,
 	type CapturedInput,
 	type InputSource,
@@ -45,7 +47,6 @@ export class FormatAssistantSidebarView extends ItemView {
 	private loading = false;
 	private completedMs: number | null = null;
 	private lastGenerationSource: InputSource | null = null;
-	private lastInputLength = 0;
 	private customInputEl: HTMLTextAreaElement | null = null;
 	private manualInputEl: HTMLTextAreaElement | null = null;
 	private contextPanelEl: HTMLElement | null = null;
@@ -220,7 +221,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		meta.createSpan({ text: `Current file: ${fileName}` });
 		meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
 		meta.createSpan({
-			text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${this.countLines(preview.text)} lines`
+			text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
 		});
 
 
@@ -287,7 +288,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		header.createEl("h3", { text: "Manual Input" });
 		const manualStats = header.createSpan({
 			cls: "format-assistant-muted",
-			text: `Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
+			text: this.getManualInputStatsText()
 		});
 
 		this.manualInputEl = panel.createEl("textarea", {
@@ -297,12 +298,6 @@ export class FormatAssistantSidebarView extends ItemView {
 			}
 		});
 		this.manualInputEl.value = this.manualInput;
-		this.manualInputEl.addEventListener("input", () => {
-			this.manualInput = this.manualInputEl?.value ?? "";
-			manualStats.setText(
-				`Manual input: ${this.manualInput.length} chars / ${this.countWords(this.manualInput)} words / ${this.countLines(this.manualInput)} lines`
-			);
-		});
 
 		panel.createDiv({
 			cls: "format-assistant-muted format-assistant-hint",
@@ -339,6 +334,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 
 		this.manualInputEl.addEventListener("input", () => {
+			this.manualInput = this.manualInputEl?.value ?? "";
+			manualStats.setText(this.getManualInputStatsText());
 			sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
 			useButton.disabled = !this.manualInput.trim();
 			clearButton.disabled = !this.manualInput;
@@ -568,7 +565,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.statusText = "Generating...";
 		this.completedMs = null;
 		this.lastGenerationSource = input.source;
-		this.lastInputLength = input.text.length;
 		this.render();
 
 		const startedAt = performance.now();
@@ -776,12 +772,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		return this.plugin.selectionService.getActiveSelectionPreview();
 	}
 
-	private countWords(text: string): number {
-		return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
-	}
-
-	private countLines(text: string): number {
-		return text.trim() ? text.split(/\r?\n/).length : 0;
+	private getManualInputStatsText(): string {
+		return `Manual input: ${this.manualInput.length} chars / ${countWords(this.manualInput)} words / ${countLines(this.manualInput)} lines`;
 	}
 
 	private openSettings(): void {

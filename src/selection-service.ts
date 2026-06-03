@@ -87,10 +87,11 @@ export class SelectionService {
 			return null;
 		}
 
+		const info = view ?? this.app.workspace.activeEditor;
 		return {
 			source: "selection",
-			fileName: view?.file?.basename ?? null,
-			filePath: view?.file?.path ?? null,
+			fileName: info?.file?.basename ?? null,
+			filePath: info?.file?.path ?? null,
 			text,
 			wordCount: countWords(text),
 			characterCount: text.length,
@@ -209,6 +210,14 @@ export function describeInput(text: string): string {
 	return `${text.length} chars / ${countWords(text)} words`;
 }
 
+export function countWords(text: string): number {
+	return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+}
+
+export function countLines(text: string): number {
+	return text.trim() ? text.split(/\r?\n/).length : 0;
+}
+
 function cleanCurrentNoteBody(text: string): string {
 	return stripLeadingHeading(stripFrontmatter(text)).trim();
 }
@@ -219,10 +228,6 @@ function stripFrontmatter(text: string): string {
 
 function stripLeadingHeading(text: string): string {
 	return text.replace(/^\s*# [^\r\n]*(?:\r?\n|$)/, "");
-}
-
-function countWords(text: string): number {
-	return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 }
 
 function positionsEqual(left: EditorPosition, right: EditorPosition): boolean {
