@@ -55,7 +55,7 @@ export async function callChatCompletions(
 	} catch (error) {
 		if (error instanceof DOMException && error.name === "AbortError") {
 			throw new Error(
-				`Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Selected: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the selection.`
+				`Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Input: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the input.`
 			);
 		}
 

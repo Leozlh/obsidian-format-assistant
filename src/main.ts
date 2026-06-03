@@ -193,7 +193,7 @@ export default class FormatAssistantPlugin extends Plugin {
 		selectedText: string,
 		customInstruction: string,
 		currentFileName?: string,
-		inputSource: "selection" | "manual" = "selection"
+		inputSource: "selection" | "manual" | "note" = "selection"
 	): Promise<string> {
 		const validationError = this.validateApiSettings();
 		if (validationError) {

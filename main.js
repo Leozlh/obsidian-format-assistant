@@ -284,11 +284,20 @@ function buildContextBlock(options) {
   }
   if (options.inputSource) {
     sections.push(
-      options.inputSource === "manual" ? "\u8F93\u5165\u6765\u6E90\uFF1AManual input\uFF08\u7528\u6237\u5728\u4FA7\u680F\u624B\u52A8\u7C98\u8D34\u6216\u8F93\u5165\u7684\u6587\u672C\uFF09" : "\u8F93\u5165\u6765\u6E90\uFF1ACaptured selection\uFF08Obsidian \u7F16\u8F91\u5668\u4E2D\u7684\u9009\u4E2D\u6587\u672C\uFF09"
+      inputSourceLabel(options.inputSource)
     );
   }
   return sections.length ? `\u4E0A\u4E0B\u6587\u4FE1\u606F\uFF1A
 ${sections.join("\n")}` : "";
+}
+function inputSourceLabel(source) {
+  if (source === "manual") {
+    return "\u8F93\u5165\u6765\u6E90\uFF1AManual input\uFF08\u7528\u6237\u5728\u4FA7\u680F\u624B\u52A8\u7C98\u8D34\u6216\u8F93\u5165\u7684\u6587\u672C\uFF09";
+  }
+  if (source === "note") {
+    return "\u8F93\u5165\u6765\u6E90\uFF1ACurrent note fallback\uFF08\u5F53\u524D Markdown \u6587\u4EF6\u6B63\u6587\uFF0C\u5DF2\u79FB\u9664\u5F00\u5934 frontmatter \u548C\u4E00\u7EA7\u6807\u9898\uFF09";
+  }
+  return "\u8F93\u5165\u6765\u6E90\uFF1ACaptured selection\uFF08Obsidian \u7F16\u8F91\u5668\u4E2D\u7684\u9009\u4E2D\u6587\u672C\uFF09";
 }
 
 // src/api.ts
@@ -327,7 +336,7 @@ async function callChatCompletions(settings, promptOptions) {
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
-        `Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Selected: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the selection.`
+        `Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Input: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the input.`
       );
     }
     throw error;
@@ -772,6 +781,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.customInstruction = "";
     this.currentSelection = null;
     this.selectionContext = null;
+    this.noteFallbackContext = null;
     this.outputText = "";
     this.statusText = "";
     this.errorText = "";
@@ -820,11 +830,11 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     this.renderStatus(root);
   }
   refreshContextStatus() {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     const info = this.getActiveMarkdownInfo();
     const selection = (_d = (_c = (_a = info == null ? void 0 : info.editor) == null ? void 0 : _a.getSelection()) != null ? _c : (_b = this.selectionContext) == null ? void 0 : _b.text) != null ? _d : "";
-    const activeName = (_h = (_g = (_e = this.selectionContext) == null ? void 0 : _e.fileName) != null ? _g : (_f = info == null ? void 0 : info.file) == null ? void 0 : _f.basename) != null ? _h : "No active Markdown file";
-    if (!this.selectionContext) {
+    const activeName = (_j = (_i = (_g = (_e = this.selectionContext) == null ? void 0 : _e.fileName) != null ? _g : (_f = this.noteFallbackContext) == null ? void 0 : _f.fileName) != null ? _i : (_h = info == null ? void 0 : info.file) == null ? void 0 : _h.basename) != null ? _j : "No active Markdown file";
+    if (!this.selectionContext && !this.noteFallbackContext) {
       this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. No selection captured.`;
     }
     this.render();
@@ -859,6 +869,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       from: editor.getCursor("from"),
       to: editor.getCursor("to")
     };
+    this.noteFallbackContext = null;
     this.errorText = "";
     this.statusText = `Captured ${this.describeText(selectedText)}.`;
     this.render();
@@ -906,25 +917,25 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     });
   }
   renderContextPreview(root) {
-    var _a;
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     const header = panel.createDiv({ cls: "format-assistant-section-header" });
     header.createEl("h3", { text: "Context Preview" });
-    const preview = (_a = this.currentSelection) != null ? _a : getActiveSelectionPreview(this.getActiveMarkdownInfo());
+    const preview = this.getDisplayedContextPreview();
     const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
     const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
     meta.createSpan({ text: `Current file: ${fileName}` });
+    meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
     meta.createSpan({
       text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${this.countLines(preview.text)} lines`
     });
     if (!preview.text.trim()) {
       panel.createDiv({
         cls: "format-assistant-empty format-assistant-context-preview",
-        text: "No selection captured. Select text in an editor, then click Refresh."
+        text: "No selection captured. Select text in an editor, then click Refresh. If there is no selection, the current note body can be used as fallback."
       });
       panel.createDiv({
         cls: "format-assistant-muted format-assistant-hint",
-        text: "Use Refresh or Use to capture the latest editor selection."
+        text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
       });
       this.renderSelectionControls(panel);
       return;
@@ -935,7 +946,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     });
     panel.createDiv({
       cls: "format-assistant-muted format-assistant-hint",
-      text: "Use Refresh or Use to capture the latest editor selection."
+      text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
     });
     this.renderSelectionControls(panel);
   }
@@ -1080,6 +1091,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     clearButton.addEventListener("click", () => {
       this.currentSelection = null;
       this.selectionContext = null;
+      this.noteFallbackContext = null;
       this.statusText = "Context cleared.";
       this.errorText = "";
       this.completedMs = null;
@@ -1167,7 +1179,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     if (!this.outputText) {
       parent.createDiv({
         cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
-        text: "No result yet. Click Generate to process captured selection."
+        text: "No result yet. Click Generate to process manual input, captured selection, or current note fallback."
       });
       return;
     }
@@ -1183,7 +1195,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     const panel = root.createDiv({ cls: "format-assistant-status" });
     panel.createDiv({
       cls: "format-assistant-warning",
-      text: "Full-note setting is on, but this version still sends only captured selection text."
+      text: "Full-note setting is on. This plugin only uses the active note as fallback and never scans the vault."
     });
   }
   async generate() {
@@ -1244,7 +1256,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     if (this.lastGenerationSource !== "selection") {
-      new import_obsidian3.Notice("Replace selection is only available when the input comes from a captured editor selection.");
+      new import_obsidian3.Notice("Replace selection is only available for captured selection results.");
       return;
     }
     new ConfirmModal(this.app, {
@@ -1259,7 +1271,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     if (this.lastGenerationSource !== "selection") {
-      new import_obsidian3.Notice("Insert below selection is only available when the input comes from a captured editor selection.");
+      new import_obsidian3.Notice("Insert below selection is only available for captured selection results.");
       return;
     }
     new ConfirmModal(this.app, {
@@ -1342,6 +1354,7 @@ ${this.outputText}`,
     if (!(info == null ? void 0 : info.editor)) {
       this.currentSelection = null;
       this.selectionContext = null;
+      this.noteFallbackContext = null;
       this.setError("Switch to a Markdown editor first.");
       if (showNotice) {
         new import_obsidian3.Notice("Switch to a Markdown editor first.");
@@ -1352,15 +1365,19 @@ ${this.outputText}`,
     this.currentSelection = preview;
     if (!preview.text.trim()) {
       this.selectionContext = null;
-      this.statusText = "Select text first.";
+      if (this.captureCurrentNoteFallback(info, showNotice)) {
+        return true;
+      }
+      this.statusText = "Select text first or open a note with body text.";
       this.errorText = "";
       this.render();
       if (showNotice) {
-        new import_obsidian3.Notice("Select text first.");
+        new import_obsidian3.Notice("Select text first or open a note with body text.");
       }
       return false;
     }
     this.setSelectionContextFromPreview(preview);
+    this.noteFallbackContext = null;
     this.statusText = `Captured ${describeSelection(preview.text)}.`;
     this.errorText = "";
     this.render();
@@ -1386,6 +1403,7 @@ ${this.outputText}`,
       from: preview.from,
       to: preview.to
     };
+    this.noteFallbackContext = null;
   }
   setError(message) {
     this.errorText = message;
@@ -1395,8 +1413,60 @@ ${this.outputText}`,
   describeText(text) {
     return describeSelection(text);
   }
+  getDisplayedContextPreview() {
+    var _a, _b, _c;
+    if ((_a = this.currentSelection) == null ? void 0 : _a.text.trim()) {
+      return this.currentSelection;
+    }
+    if ((_b = this.noteFallbackContext) == null ? void 0 : _b.text.trim()) {
+      return {
+        fileName: (_c = this.noteFallbackContext.fileName) != null ? _c : "No active Markdown file",
+        filePath: this.noteFallbackContext.filePath,
+        text: this.noteFallbackContext.text,
+        wordCount: this.countWords(this.noteFallbackContext.text),
+        characterCount: this.noteFallbackContext.text.length,
+        from: null,
+        to: null
+      };
+    }
+    return getActiveSelectionPreview(this.getActiveMarkdownInfo());
+  }
+  captureCurrentNoteFallback(info, showNotice) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    if (!info.editor) {
+      return false;
+    }
+    const cleanedText = cleanCurrentNoteBody(info.editor.getValue());
+    if (!cleanedText.trim()) {
+      this.currentSelection = getActiveSelectionPreview(info);
+      this.noteFallbackContext = null;
+      return false;
+    }
+    this.currentSelection = {
+      fileName: (_b = (_a = info.file) == null ? void 0 : _a.basename) != null ? _b : "No active Markdown file",
+      filePath: (_d = (_c = info.file) == null ? void 0 : _c.path) != null ? _d : null,
+      text: cleanedText,
+      wordCount: this.countWords(cleanedText),
+      characterCount: cleanedText.length,
+      from: null,
+      to: null
+    };
+    this.selectionContext = null;
+    this.noteFallbackContext = {
+      text: cleanedText,
+      filePath: (_f = (_e = info.file) == null ? void 0 : _e.path) != null ? _f : null,
+      fileName: (_h = (_g = info.file) == null ? void 0 : _g.basename) != null ? _h : null
+    };
+    this.statusText = `Using current note fallback: ${this.describeText(cleanedText)}.`;
+    this.errorText = "";
+    this.render();
+    if (showNotice) {
+      new import_obsidian3.Notice("No selection found. Using current note body as input.");
+    }
+    return true;
+  }
   resolveInputForGenerate() {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const manualText = this.manualInput.trim();
     if (manualText) {
       return {
@@ -1411,27 +1481,43 @@ ${this.outputText}`,
         this.setSelectionContextFromPreview(this.currentSelection);
       }
     }
-    if (!((_f = this.selectionContext) == null ? void 0 : _f.text.trim())) {
-      return null;
+    if ((_f = this.selectionContext) == null ? void 0 : _f.text.trim()) {
+      return {
+        text: this.selectionContext.text.trim(),
+        source: "selection",
+        currentFileName: (_g = this.selectionContext.fileName) != null ? _g : void 0
+      };
     }
-    return {
-      text: this.selectionContext.text.trim(),
-      source: "selection",
-      currentFileName: (_g = this.selectionContext.fileName) != null ? _g : void 0
-    };
+    if ((_h = this.noteFallbackContext) == null ? void 0 : _h.text.trim()) {
+      return {
+        text: this.noteFallbackContext.text.trim(),
+        source: "note",
+        currentFileName: (_i = this.noteFallbackContext.fileName) != null ? _i : void 0
+      };
+    }
+    return null;
   }
   getCurrentInputSourceLabel() {
-    var _a;
+    var _a, _b;
     if (this.manualInput.trim()) {
       return "Manual input";
     }
     if ((_a = this.selectionContext) == null ? void 0 : _a.text.trim()) {
       return "Captured selection";
     }
+    if ((_b = this.noteFallbackContext) == null ? void 0 : _b.text.trim()) {
+      return "Current note fallback";
+    }
     return "None";
   }
   formatInputSource(source) {
-    return source === "manual" ? "Manual input" : "Captured selection";
+    if (source === "manual") {
+      return "Manual input";
+    }
+    if (source === "note") {
+      return "Current note fallback";
+    }
+    return "Captured selection";
   }
   countWords(text) {
     return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -1523,6 +1609,15 @@ ${this.outputText}`,
 };
 function positionsEqual(left, right) {
   return left.line === right.line && left.ch === right.ch;
+}
+function cleanCurrentNoteBody(text) {
+  return stripLeadingHeading(stripFrontmatter(text)).trim();
+}
+function stripFrontmatter(text) {
+  return text.replace(/^\s*---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "");
+}
+function stripLeadingHeading(text) {
+  return text.replace(/^\s*# [^\r\n]*(?:\r?\n|$)/, "");
 }
 
 // src/main.ts

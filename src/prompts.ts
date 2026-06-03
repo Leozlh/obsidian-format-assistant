@@ -17,7 +17,7 @@ export interface FormatTask {
 export interface PromptOptions {
 	mode: FormatMode;
 	selectedText: string;
-	inputSource?: "selection" | "manual";
+	inputSource?: "selection" | "manual" | "note";
 	customInstruction?: string;
 	currentFileName?: string;
 }
@@ -280,11 +280,21 @@ function buildContextBlock(options: PromptOptions): string {
 
 	if (options.inputSource) {
 		sections.push(
-			options.inputSource === "manual"
-				? "输入来源：Manual input（用户在侧栏手动粘贴或输入的文本）"
-				: "输入来源：Captured selection（Obsidian 编辑器中的选中文本）"
+			inputSourceLabel(options.inputSource)
 		);
 	}
 
 	return sections.length ? `上下文信息：\n${sections.join("\n")}` : "";
+}
+
+function inputSourceLabel(source: NonNullable<PromptOptions["inputSource"]>): string {
+	if (source === "manual") {
+		return "输入来源：Manual input（用户在侧栏手动粘贴或输入的文本）";
+	}
+
+	if (source === "note") {
+		return "输入来源：Current note fallback（当前 Markdown 文件正文，已移除开头 frontmatter 和一级标题）";
+	}
+
+	return "输入来源：Captured selection（Obsidian 编辑器中的选中文本）";
 }

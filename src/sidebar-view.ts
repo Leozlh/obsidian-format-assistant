@@ -30,7 +30,13 @@ interface SelectionContext {
 	to: EditorPosition;
 }
 
-type SidebarInputSource = "selection" | "manual";
+interface NoteFallbackContext {
+	text: string;
+	filePath: string | null;
+	fileName: string | null;
+}
+
+type SidebarInputSource = "selection" | "manual" | "note";
 
 const SIDEBAR_MODES: FormatMode[] = [
 	"obsidian-markdown",
@@ -51,6 +57,7 @@ export class FormatAssistantSidebarView extends ItemView {
 	private customInstruction = "";
 	private currentSelection: ActiveSelectionPreview | null = null;
 	private selectionContext: SelectionContext | null = null;
+	private noteFallbackContext: NoteFallbackContext | null = null;
 	private outputText = "";
 	private statusText = "";
 	private errorText = "";
@@ -114,9 +121,12 @@ export class FormatAssistantSidebarView extends ItemView {
 	refreshContextStatus(): void {
 		const info = this.getActiveMarkdownInfo();
 		const selection = info?.editor?.getSelection() ?? this.selectionContext?.text ?? "";
-		const activeName = this.selectionContext?.fileName ?? info?.file?.basename ?? "No active Markdown file";
+		const activeName = this.selectionContext?.fileName
+			?? this.noteFallbackContext?.fileName
+			?? info?.file?.basename
+			?? "No active Markdown file";
 
-		if (!this.selectionContext) {
+		if (!this.selectionContext && !this.noteFallbackContext) {
 			this.statusText = selection.trim()
 				? `Active file: ${activeName}. Current editor has a selection.`
 				: `Active file: ${activeName}. No selection captured.`;
@@ -157,6 +167,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			from: editor.getCursor("from"),
 			to: editor.getCursor("to")
 		};
+		this.noteFallbackContext = null;
 		this.errorText = "";
 		this.statusText = `Captured ${this.describeText(selectedText)}.`;
 		this.render();
@@ -217,11 +228,12 @@ export class FormatAssistantSidebarView extends ItemView {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		const header = panel.createDiv({ cls: "format-assistant-section-header" });
 		header.createEl("h3", { text: "Context Preview" });
-		const preview = this.currentSelection ?? getActiveSelectionPreview(this.getActiveMarkdownInfo());
+		const preview = this.getDisplayedContextPreview();
 
 		const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
 		const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
 		meta.createSpan({ text: `Current file: ${fileName}` });
+		meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
 		meta.createSpan({
 			text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${this.countLines(preview.text)} lines`
 		});
@@ -230,11 +242,11 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!preview.text.trim()) {
 			panel.createDiv({
 				cls: "format-assistant-empty format-assistant-context-preview",
-				text: "No selection captured. Select text in an editor, then click Refresh."
+				text: "No selection captured. Select text in an editor, then click Refresh. If there is no selection, the current note body can be used as fallback."
 			});
 			panel.createDiv({
 				cls: "format-assistant-muted format-assistant-hint",
-				text: "Use Refresh or Use to capture the latest editor selection."
+				text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
 			});
 			this.renderSelectionControls(panel);
 			return;
@@ -246,7 +258,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 		panel.createDiv({
 			cls: "format-assistant-muted format-assistant-hint",
-			text: "Use Refresh or Use to capture the latest editor selection."
+			text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
 		});
 		this.renderSelectionControls(panel);
 	}
@@ -415,6 +427,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		clearButton.addEventListener("click", () => {
 			this.currentSelection = null;
 			this.selectionContext = null;
+			this.noteFallbackContext = null;
 			this.statusText = "Context cleared.";
 			this.errorText = "";
 			this.completedMs = null;
@@ -515,7 +528,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!this.outputText) {
 			parent.createDiv({
 				cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
-				text: "No result yet. Click Generate to process captured selection."
+				text: "No result yet. Click Generate to process manual input, captured selection, or current note fallback."
 			});
 			return;
 		}
@@ -535,7 +548,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		panel.createDiv({
 			cls: "format-assistant-warning",
-			text: "Full-note setting is on, but this version still sends only captured selection text."
+			text: "Full-note setting is on. This plugin only uses the active note as fallback and never scans the vault."
 		});
 	}
 
@@ -604,7 +617,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		if (this.lastGenerationSource !== "selection") {
-			new Notice("Replace selection is only available when the input comes from a captured editor selection.");
+			new Notice("Replace selection is only available for captured selection results.");
 			return;
 		}
 
@@ -622,7 +635,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		if (this.lastGenerationSource !== "selection") {
-			new Notice("Insert below selection is only available when the input comes from a captured editor selection.");
+			new Notice("Insert below selection is only available for captured selection results.");
 			return;
 		}
 
@@ -723,6 +736,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!info?.editor) {
 			this.currentSelection = null;
 			this.selectionContext = null;
+			this.noteFallbackContext = null;
 			this.setError("Switch to a Markdown editor first.");
 			if (showNotice) {
 				new Notice("Switch to a Markdown editor first.");
@@ -735,16 +749,21 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		if (!preview.text.trim()) {
 			this.selectionContext = null;
-			this.statusText = "Select text first.";
+			if (this.captureCurrentNoteFallback(info, showNotice)) {
+				return true;
+			}
+
+			this.statusText = "Select text first or open a note with body text.";
 			this.errorText = "";
 			this.render();
 			if (showNotice) {
-				new Notice("Select text first.");
+				new Notice("Select text first or open a note with body text.");
 			}
 			return false;
 		}
 
 		this.setSelectionContextFromPreview(preview);
+		this.noteFallbackContext = null;
 		this.statusText = `Captured ${describeSelection(preview.text)}.`;
 		this.errorText = "";
 		this.render();
@@ -773,6 +792,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			from: preview.from,
 			to: preview.to
 		};
+		this.noteFallbackContext = null;
 	}
 
 	private setError(message: string): void {
@@ -783,6 +803,64 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private describeText(text: string): string {
 		return describeSelection(text);
+	}
+
+	private getDisplayedContextPreview(): ActiveSelectionPreview {
+		if (this.currentSelection?.text.trim()) {
+			return this.currentSelection;
+		}
+
+		if (this.noteFallbackContext?.text.trim()) {
+			return {
+				fileName: this.noteFallbackContext.fileName ?? "No active Markdown file",
+				filePath: this.noteFallbackContext.filePath,
+				text: this.noteFallbackContext.text,
+				wordCount: this.countWords(this.noteFallbackContext.text),
+				characterCount: this.noteFallbackContext.text.length,
+				from: null,
+				to: null
+			};
+		}
+
+		return getActiveSelectionPreview(this.getActiveMarkdownInfo());
+	}
+
+	private captureCurrentNoteFallback(info: MarkdownFileInfo, showNotice: boolean): boolean {
+		if (!info.editor) {
+			return false;
+		}
+
+		const cleanedText = cleanCurrentNoteBody(info.editor.getValue());
+		if (!cleanedText.trim()) {
+			this.currentSelection = getActiveSelectionPreview(info);
+			this.noteFallbackContext = null;
+			return false;
+		}
+
+		this.currentSelection = {
+			fileName: info.file?.basename ?? "No active Markdown file",
+			filePath: info.file?.path ?? null,
+			text: cleanedText,
+			wordCount: this.countWords(cleanedText),
+			characterCount: cleanedText.length,
+			from: null,
+			to: null
+		};
+		this.selectionContext = null;
+		this.noteFallbackContext = {
+			text: cleanedText,
+			filePath: info.file?.path ?? null,
+			fileName: info.file?.basename ?? null
+		};
+		this.statusText = `Using current note fallback: ${this.describeText(cleanedText)}.`;
+		this.errorText = "";
+		this.render();
+
+		if (showNotice) {
+			new Notice("No selection found. Using current note body as input.");
+		}
+
+		return true;
 	}
 
 	private resolveInputForGenerate(): GenerateInput | null {
@@ -802,15 +880,23 @@ export class FormatAssistantSidebarView extends ItemView {
 			}
 		}
 
-		if (!this.selectionContext?.text.trim()) {
-			return null;
+		if (this.selectionContext?.text.trim()) {
+			return {
+				text: this.selectionContext.text.trim(),
+				source: "selection",
+				currentFileName: this.selectionContext.fileName ?? undefined
+			};
 		}
 
-		return {
-			text: this.selectionContext.text.trim(),
-			source: "selection",
-			currentFileName: this.selectionContext.fileName ?? undefined
-		};
+		if (this.noteFallbackContext?.text.trim()) {
+			return {
+				text: this.noteFallbackContext.text.trim(),
+				source: "note",
+				currentFileName: this.noteFallbackContext.fileName ?? undefined
+			};
+		}
+
+		return null;
 	}
 
 	private getCurrentInputSourceLabel(): string {
@@ -822,11 +908,23 @@ export class FormatAssistantSidebarView extends ItemView {
 			return "Captured selection";
 		}
 
+		if (this.noteFallbackContext?.text.trim()) {
+			return "Current note fallback";
+		}
+
 		return "None";
 	}
 
 	private formatInputSource(source: SidebarInputSource): string {
-		return source === "manual" ? "Manual input" : "Captured selection";
+		if (source === "manual") {
+			return "Manual input";
+		}
+
+		if (source === "note") {
+			return "Current note fallback";
+		}
+
+		return "Captured selection";
 	}
 
 	private countWords(text: string): number {
@@ -938,4 +1036,16 @@ export class FormatAssistantSidebarView extends ItemView {
 
 function positionsEqual(left: EditorPosition, right: EditorPosition): boolean {
 	return left.line === right.line && left.ch === right.ch;
+}
+
+function cleanCurrentNoteBody(text: string): string {
+	return stripLeadingHeading(stripFrontmatter(text)).trim();
+}
+
+function stripFrontmatter(text: string): string {
+	return text.replace(/^\s*---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "");
+}
+
+function stripLeadingHeading(text: string): string {
+	return text.replace(/^\s*# [^\r\n]*(?:\r?\n|$)/, "");
 }
