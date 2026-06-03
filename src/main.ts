@@ -297,12 +297,3 @@ export default class FormatAssistantPlugin extends Plugin {
 		};
 	}
 }
-
-export function getActiveMarkdownView(plugin: FormatAssistantPlugin): MarkdownView | null {
-	const view = plugin.app.workspace.getActiveViewOfType(MarkdownView);
-	return view ?? null;
-}
-
-export function getOrCreateRightLeaf(plugin: FormatAssistantPlugin): WorkspaceLeaf | null {
-	return plugin.app.workspace.getRightLeaf(false);
-}

@@ -20,9 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => FormatAssistantPlugin,
-  getActiveMarkdownView: () => getActiveMarkdownView,
-  getOrCreateRightLeaf: () => getOrCreateRightLeaf
+  default: () => FormatAssistantPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian4 = require("obsidian");
@@ -873,7 +871,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     };
     this.noteFallbackContext = null;
     this.errorText = "";
-    this.statusText = `Captured ${this.describeText(selectedText)}.`;
+    this.statusText = `Captured ${describeSelection(selectedText)}.`;
     this.render();
     if (showNotice) {
       new import_obsidian3.Notice("Selection sent to Format Assistant.");
@@ -1412,9 +1410,6 @@ ${this.outputText}`,
     this.statusText = "";
     this.render();
   }
-  describeText(text) {
-    return describeSelection(text);
-  }
   getDisplayedContextPreview() {
     var _a, _b, _c;
     if ((_a = this.currentSelection) == null ? void 0 : _a.text.trim()) {
@@ -1459,7 +1454,7 @@ ${this.outputText}`,
       filePath: (_f = (_e = info.file) == null ? void 0 : _e.path) != null ? _f : null,
       fileName: (_h = (_g = info.file) == null ? void 0 : _g.basename) != null ? _h : null
     };
-    this.statusText = `Using current note fallback: ${this.describeText(cleanedText)}.`;
+    this.statusText = `Using current note fallback: ${describeSelection(cleanedText)}.`;
     this.errorText = "";
     this.render();
     return true;
@@ -1844,10 +1839,3 @@ var FormatAssistantPlugin = class extends import_obsidian4.Plugin {
     };
   }
 };
-function getActiveMarkdownView(plugin) {
-  const view = plugin.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
-  return view != null ? view : null;
-}
-function getOrCreateRightLeaf(plugin) {
-  return plugin.app.workspace.getRightLeaf(false);
-}

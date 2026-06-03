@@ -173,7 +173,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		};
 		this.noteFallbackContext = null;
 		this.errorText = "";
-		this.statusText = `Captured ${this.describeText(selectedText)}.`;
+		this.statusText = `Captured ${describeSelection(selectedText)}.`;
 		this.render();
 
 		if (showNotice) {
@@ -805,10 +805,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.render();
 	}
 
-	private describeText(text: string): string {
-		return describeSelection(text);
-	}
-
 	private getDisplayedContextPreview(): ActiveSelectionPreview {
 		if (this.currentSelection?.text.trim()) {
 			return this.currentSelection;
@@ -856,7 +852,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			filePath: info.file?.path ?? null,
 			fileName: info.file?.basename ?? null
 		};
-		this.statusText = `Using current note fallback: ${this.describeText(cleanedText)}.`;
+		this.statusText = `Using current note fallback: ${describeSelection(cleanedText)}.`;
 		this.errorText = "";
 		this.render();
 
