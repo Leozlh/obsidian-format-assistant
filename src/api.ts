@@ -36,18 +36,28 @@ export async function callChatCompletions(
 	);
 
 	try {
+		const body: Record<string, unknown> = {
+			model: settings.model,
+			messages: buildMessages(settings.systemPrompt, promptOptions) satisfies ChatMessage[]
+		};
+		// Some providers (e.g. OpenAI o-series) reject `temperature` and require
+		// `max_completion_tokens` instead of `max_tokens`.
+		if (!settings.omitTemperature) {
+			body.temperature = settings.temperature;
+		}
+		if (settings.useMaxCompletionTokens) {
+			body.max_completion_tokens = maxTokens;
+		} else {
+			body.max_tokens = maxTokens;
+		}
+
 		const response = await fetch(chatCompletionsUrl(settings.baseUrl), {
 			method: "POST",
 			headers: {
 				Authorization: `Bearer ${settings.apiKey}`,
 				"Content-Type": "application/json"
 			},
-			body: JSON.stringify({
-				model: settings.model,
-				messages: buildMessages(settings.systemPrompt, promptOptions) satisfies ChatMessage[],
-				temperature: settings.temperature,
-				max_tokens: maxTokens
-			}),
+			body: JSON.stringify(body),
 			signal: controller.signal
 		});
 

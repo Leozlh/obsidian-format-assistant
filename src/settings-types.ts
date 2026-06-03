@@ -17,6 +17,9 @@ export interface FormatAssistantSettings {
 	systemPrompt: string;
 	previewBeforeReplace: boolean;
 	timeoutSeconds: number;
+	// Compatibility toggles for stricter providers (e.g. OpenAI o-series):
+	omitTemperature: boolean;
+	useMaxCompletionTokens: boolean;
 	sidebarDefaultMode: FormatMode;
 	autoUseSelectionOnSidebarOpen: boolean;
 	includeCurrentFileNameInPrompt: boolean;
@@ -38,6 +41,8 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	systemPrompt: DEFAULT_SYSTEM_PROMPT,
 	previewBeforeReplace: true,
 	timeoutSeconds: 30,
+	omitTemperature: false,
+	useMaxCompletionTokens: false,
 	sidebarDefaultMode: "obsidian-markdown",
 	autoUseSelectionOnSidebarOpen: false,
 	includeCurrentFileNameInPrompt: true,

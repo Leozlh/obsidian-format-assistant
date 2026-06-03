@@ -103,6 +103,30 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName("Omit temperature")
+			.setDesc("Enable for models that reject a custom temperature (e.g. OpenAI o-series).")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.omitTemperature)
+					.onChange(async (value) => {
+						this.plugin.settings.omitTemperature = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Use max_completion_tokens")
+			.setDesc("Send max_completion_tokens instead of max_tokens. Enable for models that require it (e.g. OpenAI o-series).")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.useMaxCompletionTokens)
+					.onChange(async (value) => {
+						this.plugin.settings.useMaxCompletionTokens = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("System Prompt")
 			.setDesc("Global rules sent with each formatting request.")
 			.addTextArea((text) => {

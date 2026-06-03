@@ -1,59 +1,83 @@
 # Obsidian Format Assistant
 
-A lightweight, user-controlled Obsidian plugin for formatting selected text with an OpenAI-compatible Chat Completions API.
+A lightweight, user-controlled Obsidian plugin that reformats selected text with your own OpenAI-compatible Chat Completions API.
 
-It does not scan your vault, does not batch-edit notes, and does not replace text until you confirm the preview modal.
+It does **not** scan your vault and does **not** batch-edit notes. It only ever touches the text you act on, and it never writes to a note until you confirm.
 
-## Commands
+## Modes
+
+The sidebar offers three formatting modes:
+
+- **Obsidian Markdown** — light cleanup: tidy layout only, no restructuring.
+- **Note Organize** — structured study notes: extract concepts / formulas / pitfalls, may add headings.
+- **Diary Organize** — keep the original tone, preserve the time-of-day timeline, and turn actionable items into `- [ ]` tasks (records stay plain text; nothing is auto-marked done).
+
+## Sidebar workflow
+
+1. Open the right-side **Format Assistant** panel (ribbon icon or the *Open Format Assistant sidebar* command).
+2. Pick a **Mode**.
+3. Provide input, in priority order:
+   - **Manual Input** (paste text) — takes priority when non-empty;
+   - the current editor **selection** — click **Use** / **Refresh**, or **Note body** to select the whole note body (skips frontmatter and the leading `# ` heading);
+   - the current note body as a fallback (only if *Allow current note fallback* is enabled).
+4. Optionally add a one-off **Instruction**, or load a saved **Prompt Preset**.
+5. Click **Generate**. The result is **editable** before you act on it.
+6. **Copy**, **Replace selection**, or **Insert below selection**. Replace/Insert require the captured selection to still match (they refuse if the selection or file changed).
+
+## Commands (palette)
+
+Quick one-shot actions on the current selection (shown in a preview modal with Replace / Insert below / Copy):
 
 - `Format selection as Obsidian Markdown`
-- `Format selection as course note`
-- `Compress selection into review card`
-- `Generate Wiki candidates`
-- `Make selection concise`
+- `Organize selection as note`
+- `Organize selection as diary`
+
+Plus: `Open Format Assistant sidebar`, `Focus Format Assistant input`, `Send selected text to Format Assistant`.
+
+## API configuration
+
+Open the plugin settings and fill in:
+
+- **API Base URL** — the API root, e.g. `https://api.openai.com/v1` (do **not** include `/chat/completions`)
+- **API Key** — stored in Obsidian plugin data; never hardcoded or logged
+- **Model** — e.g. `gpt-4o-mini`
+- **Max Tokens** / **Temperature** / **Timeout seconds**
+- **Provider Type**: `OpenAI-compatible`
+- **System Prompt** (with *Reset to default*)
+- **Omit temperature** / **Use max_completion_tokens** — compatibility toggles for stricter providers (e.g. OpenAI o-series)
+- Behaviour toggles: *Preview before replace*, *Auto use selection on sidebar open*, *Include current file name in prompt*, *Allow current note fallback*
+- **API Profiles** — save/switch between multiple API configurations
+
+Per-mode runtime: Note Organize uses a larger token budget / longer timeout; Diary Organize uses a smaller one; other modes fall back to the global settings. If a response is cut off (`finish_reason: length`), the plugin warns that the output may be truncated.
 
 ## Development
 
 ```bash
 npm install
-npm run dev
-npm run build
+npm run dev      # watch build
+npm run build    # type-check + production build
+npm test         # run unit tests (vitest)
+npm run verify   # test + build
 ```
 
-## Manual Test Install
+## Manual install into a vault
 
-1. Run `npm install` and `npm run build`.
-2. Create this folder in a test vault: `<Vault>/.obsidian/plugins/obsidian-format-assistant/`.
-3. Copy only these built plugin files into that folder:
+1. `npm install` then `npm run build`.
+2. Create `<Vault>/.obsidian/plugins/obsidian-format-assistant/`.
+3. Copy only the built files into it:
    - `manifest.json`
    - `main.js`
    - `styles.css`
-4. Open Obsidian settings, enable Community plugins, then enable `Format Assistant`.
+4. In Obsidian: enable Community plugins, then enable **Format Assistant**.
 
-This project is intentionally not installed into any vault automatically.
+(Your `data.json` settings live in that folder too and are never tracked by this repo.)
 
-## API Configuration
+## Rollback / uninstall
 
-Open the plugin settings and fill in:
-
-- API Base URL, for example `https://api.openai.com/v1`
-- API Key
-- Model, for example `gpt-4o-mini`
-- Max Tokens
-- Temperature
-- Provider Type: `OpenAI-compatible`
-- System Prompt
-- Preview before replace
-- Timeout seconds
-
-The API key is saved through Obsidian plugin settings. It is not hardcoded and is not printed to logs.
-
-## Rollback Or Uninstall
-
-To uninstall from a test vault, disable the plugin in Obsidian, then remove:
+Disable the plugin in Obsidian, then remove:
 
 ```text
 <Vault>/.obsidian/plugins/obsidian-format-assistant/
 ```
 
-No note content is changed unless you explicitly click `Replace selection` in the preview modal.
+No note content changes unless you explicitly click **Replace selection** / **Insert below selection** (sidebar) or confirm in the preview modal (commands).

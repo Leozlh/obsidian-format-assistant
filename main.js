@@ -271,18 +271,25 @@ async function callChatCompletions(settings, promptOptions) {
     timeoutSeconds * 1e3
   );
   try {
+    const body = {
+      model: settings.model,
+      messages: buildMessages(settings.systemPrompt, promptOptions)
+    };
+    if (!settings.omitTemperature) {
+      body.temperature = settings.temperature;
+    }
+    if (settings.useMaxCompletionTokens) {
+      body.max_completion_tokens = maxTokens;
+    } else {
+      body.max_tokens = maxTokens;
+    }
     const response = await fetch(chatCompletionsUrl(settings.baseUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${settings.apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model: settings.model,
-        messages: buildMessages(settings.systemPrompt, promptOptions),
-        temperature: settings.temperature,
-        max_tokens: maxTokens
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
     const text = await response.text();
@@ -484,6 +491,8 @@ var DEFAULT_SETTINGS = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   previewBeforeReplace: true,
   timeoutSeconds: 30,
+  omitTemperature: false,
+  useMaxCompletionTokens: false,
   sidebarDefaultMode: "obsidian-markdown",
   autoUseSelectionOnSidebarOpen: false,
   includeCurrentFileNameInPrompt: true,
@@ -570,6 +579,18 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     new import_obsidian2.Setting(containerEl).setName("Provider Type").addDropdown(
       (dropdown) => dropdown.addOption("openai-compatible", "OpenAI-compatible").setValue(this.plugin.settings.providerType).onChange(async (value) => {
         this.plugin.settings.providerType = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("Omit temperature").setDesc("Enable for models that reject a custom temperature (e.g. OpenAI o-series).").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.omitTemperature).onChange(async (value) => {
+        this.plugin.settings.omitTemperature = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("Use max_completion_tokens").setDesc("Send max_completion_tokens instead of max_tokens. Enable for models that require it (e.g. OpenAI o-series).").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.useMaxCompletionTokens).onChange(async (value) => {
+        this.plugin.settings.useMaxCompletionTokens = value;
         await this.plugin.saveSettings();
       })
     );
