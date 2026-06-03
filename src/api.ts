@@ -1,4 +1,9 @@
-import { buildMessages, type PromptOptions, type ChatMessage } from "./prompts";
+import {
+	buildMessages,
+	resolveModeRuntime,
+	type PromptOptions,
+	type ChatMessage
+} from "./prompts";
 import type { FormatAssistantSettings } from "./settings-types";
 
 interface ChatCompletionResponse {
@@ -17,10 +22,11 @@ export async function callChatCompletions(
 	settings: FormatAssistantSettings,
 	promptOptions: PromptOptions
 ): Promise<string> {
+	const { maxTokens, timeoutSeconds } = resolveModeRuntime(promptOptions.mode, settings);
 	const controller = new AbortController();
 	const timeout = window.setTimeout(
 		() => controller.abort(),
-		settings.timeoutSeconds * 1000
+		timeoutSeconds * 1000
 	);
 
 	try {
@@ -34,7 +40,7 @@ export async function callChatCompletions(
 				model: settings.model,
 				messages: buildMessages(settings.systemPrompt, promptOptions) satisfies ChatMessage[],
 				temperature: settings.temperature,
-				max_tokens: settings.maxTokens
+				max_tokens: maxTokens
 			}),
 			signal: controller.signal
 		});
@@ -55,7 +61,7 @@ export async function callChatCompletions(
 	} catch (error) {
 		if (error instanceof DOMException && error.name === "AbortError") {
 			throw new Error(
-				`Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Input: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the input.`
+				`Timed out after ${timeoutSeconds}s. Model: ${settings.model}. Input: ${promptOptions.selectedText.length} chars. Max tokens: ${maxTokens}. Try increasing timeout to 60-90s or shortening the input.`
 			);
 		}
 

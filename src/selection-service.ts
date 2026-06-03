@@ -210,6 +210,49 @@ export function describeInput(text: string): string {
 	return `${text.length} chars / ${countWords(text)} words`;
 }
 
+// Computes the editor range of the note body, skipping a leading frontmatter
+// block and a single leading "# heading" line (plus blank lines after them).
+// Used to turn "the whole note body" into a real editor selection so the
+// existing selection write-back path (replace / insert) can be reused safely
+// without touching frontmatter.
+export function getNoteBodyRange(editor: Editor): { from: EditorPosition; to: EditorPosition } {
+	const lastLine = Math.max(editor.lineCount() - 1, 0);
+	let start = 0;
+
+	if (editor.getLine(0).trim() === "---") {
+		for (let i = 1; i <= lastLine; i++) {
+			if (editor.getLine(i).trim() === "---") {
+				start = i + 1;
+				break;
+			}
+		}
+	}
+
+	let headingSkipped = false;
+	while (start <= lastLine) {
+		const line = editor.getLine(start);
+		if (!headingSkipped && line.startsWith("# ")) {
+			headingSkipped = true;
+			start++;
+			continue;
+		}
+		if (!line.trim()) {
+			start++;
+			continue;
+		}
+		break;
+	}
+
+	if (start > lastLine) {
+		start = lastLine;
+	}
+
+	return {
+		from: { line: start, ch: 0 },
+		to: { line: lastLine, ch: editor.getLine(lastLine).length }
+	};
+}
+
 export function countWords(text: string): number {
 	return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 }

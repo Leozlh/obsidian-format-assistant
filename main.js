@@ -163,10 +163,24 @@ var DIARY_ORGANIZE_PROMPT = `\u4F60\u6B63\u5728\u6267\u884C\u201C\u65E5\u8BB0\u6
 \u8F93\u51FA\uFF1A
 - [ ] \u4E0B\u5348\u7EE7\u7EED\u5199\u4F5C\u4E1A
 - [ ] \u665A\u4E0A\u5F00\u59CB\u590D\u4E60\u8BA1\u5212`;
-var COURSE_NOTE_PROMPT = "\u6574\u7406\u4E3A\u8BFE\u7A0B\u7B14\u8BB0\uFF1A\n\u5C06\u5185\u5BB9\u6574\u7406\u6210\u9002\u5408\u8BFE\u7A0B\u590D\u4E60\u7684 Markdown\u3002\u4F18\u5148\u7A81\u51FA\u4E3B\u7EBF\u3001\u5B9A\u4E49\u3001\u5173\u952E\u516C\u5F0F\u3001\u63A8\u5BFC\u6B65\u9AA4\u3001\u6761\u4EF6\u3001\u6613\u9519\u70B9\u548C\u590D\u4E60\u6293\u624B\u3002\u4E0D\u8981\u6269\u5199\uFF0C\u4E0D\u8981\u8865\u9020\u77E5\u8BC6\u70B9\uFF0C\u4E0D\u8981\u6DFB\u52A0 frontmatter\u3001\u6807\u9898\u6A21\u677F\u6216\u603B\u7ED3\u5957\u8BDD\u3002";
 var REVIEW_CARD_PROMPT = "\u538B\u7F29\u4E3A\u590D\u4E60\u5361\u7247\uFF1A\n\u5C06\u5185\u5BB9\u538B\u7F29\u6210\u9AD8\u5BC6\u5EA6\u590D\u4E60\u7248\u3002\u4F18\u5148\u4FDD\u7559\u7ED3\u8BBA\u3001\u516C\u5F0F\u3001\u6761\u4EF6\u3001\u5173\u952E\u8BCD\u3001\u6613\u9519\u70B9\u548C\u6700\u77ED\u5FC5\u8981\u89E3\u91CA\u3002\u5C3D\u91CF\u77ED\u3001\u51C6\u3001\u53EF\u626B\u8BFB\uFF0C\u4F46\u4E0D\u8981\u9057\u6F0F\u539F\u6587\u5173\u952E\u903B\u8F91\uFF0C\u4E0D\u8981\u7F16\u9020\u5185\u5BB9\u3002";
 var WIKI_CANDIDATES_PROMPT = "\u63D0\u53D6 Wiki \u5019\u9009\u6761\u76EE\uFF1A\n\u4ECE\u5185\u5BB9\u4E2D\u63D0\u53D6\u9002\u5408\u5355\u72EC\u6C89\u6DC0\u4E3A Wiki \u7684\u6982\u5FF5\u3001\u516C\u5F0F\u3001\u65B9\u6CD5\u3001\u5B9A\u7406\u3001\u6A21\u578B\u6216\u5B9E\u9A8C\u672F\u8BED\u3002\u8F93\u51FA\u65F6\u6309\u6761\u76EE\u5217\u51FA\uFF0C\u6BCF\u4E2A\u6761\u76EE\u53EA\u4FDD\u7559\u6700\u5C0F\u5FC5\u8981\u5B9A\u4E49\u3001\u7528\u9014\u6216\u533A\u5206\u70B9\u3002\u4E0D\u8981\u81EA\u52A8\u521B\u5EFA\u94FE\u63A5\uFF0C\u4E0D\u8981\u6269\u5199\u6210\u5B8C\u6574\u6587\u7AE0\u3002";
 var CONCISE_PROMPT = "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u7CBE\u7B80\u4E3A\u66F4\u77ED\u3001\u66F4\u6E05\u695A\u7684 Markdown\uFF0C\u4E0D\u4E22\u5931\u6838\u5FC3\u516C\u5F0F\u3001\u9002\u7528\u6761\u4EF6\u3001\u5B9A\u4E49\u3001\u9650\u5236\u548C\u5173\u952E\u7ED3\u8BBA\u3002";
+var MODE_RUNTIME = {
+  // note/course produce longer structured output -> larger budget, longer wait.
+  "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
+  "course-note": { maxTokens: 2e3, timeoutSeconds: 60 },
+  // diary output is usually shorter and faster.
+  "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+};
+function resolveModeRuntime(mode, settings) {
+  var _a, _b, _c;
+  const override = (_a = MODE_RUNTIME[mode]) != null ? _a : {};
+  return {
+    maxTokens: (_b = override.maxTokens) != null ? _b : settings.maxTokens,
+    timeoutSeconds: (_c = override.timeoutSeconds) != null ? _c : settings.timeoutSeconds
+  };
+}
 var FORMAT_MODE_LABELS = {
   "obsidian-markdown": "Obsidian Markdown",
   "note-organize": "Note Organize",
@@ -241,14 +255,11 @@ function buildModePrompt(mode) {
   if (mode === "obsidian-markdown") {
     return OBSIDIAN_MARKDOWN_PROMPT;
   }
-  if (mode === "note-organize") {
+  if (mode === "note-organize" || mode === "course-note") {
     return NOTE_ORGANIZE_PROMPT;
   }
   if (mode === "diary-organize") {
     return DIARY_ORGANIZE_PROMPT;
-  }
-  if (mode === "course-note") {
-    return COURSE_NOTE_PROMPT;
   }
   if (mode === "review-card") {
     return REVIEW_CARD_PROMPT;
@@ -301,10 +312,11 @@ function inputSourceLabel(source) {
 // src/api.ts
 async function callChatCompletions(settings, promptOptions) {
   var _a, _b, _c;
+  const { maxTokens, timeoutSeconds } = resolveModeRuntime(promptOptions.mode, settings);
   const controller = new AbortController();
   const timeout = window.setTimeout(
     () => controller.abort(),
-    settings.timeoutSeconds * 1e3
+    timeoutSeconds * 1e3
   );
   try {
     const response = await fetch(chatCompletionsUrl(settings.baseUrl), {
@@ -317,7 +329,7 @@ async function callChatCompletions(settings, promptOptions) {
         model: settings.model,
         messages: buildMessages(settings.systemPrompt, promptOptions),
         temperature: settings.temperature,
-        max_tokens: settings.maxTokens
+        max_tokens: maxTokens
       }),
       signal: controller.signal
     });
@@ -334,7 +346,7 @@ async function callChatCompletions(settings, promptOptions) {
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
-        `Timed out after ${settings.timeoutSeconds}s. Model: ${settings.model}. Input: ${promptOptions.selectedText.length} chars. Max tokens: ${settings.maxTokens}. Try increasing timeout to 60-90s or shortening the input.`
+        `Timed out after ${timeoutSeconds}s. Model: ${settings.model}. Input: ${promptOptions.selectedText.length} chars. Max tokens: ${maxTokens}. Try increasing timeout to 60-90s or shortening the input.`
       );
     }
     throw error;
@@ -900,6 +912,39 @@ var SelectionService = class {
 function describeInput(text) {
   return `${text.length} chars / ${countWords(text)} words`;
 }
+function getNoteBodyRange(editor) {
+  const lastLine = Math.max(editor.lineCount() - 1, 0);
+  let start = 0;
+  if (editor.getLine(0).trim() === "---") {
+    for (let i = 1; i <= lastLine; i++) {
+      if (editor.getLine(i).trim() === "---") {
+        start = i + 1;
+        break;
+      }
+    }
+  }
+  let headingSkipped = false;
+  while (start <= lastLine) {
+    const line = editor.getLine(start);
+    if (!headingSkipped && line.startsWith("# ")) {
+      headingSkipped = true;
+      start++;
+      continue;
+    }
+    if (!line.trim()) {
+      start++;
+      continue;
+    }
+    break;
+  }
+  if (start > lastLine) {
+    start = lastLine;
+  }
+  return {
+    from: { line: start, ch: 0 },
+    to: { line: lastLine, ch: editor.getLine(lastLine).length }
+  };
+}
 function countWords(text) {
   return text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
 }
@@ -1227,6 +1272,8 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     useButton.addEventListener("click", () => this.useCurrentSelection(true));
     const refreshButton = buttons.createEl("button", { text: "Refresh" });
     refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
+    const bodyButton = buttons.createEl("button", { text: "Select note body" });
+    bodyButton.addEventListener("click", () => this.selectNoteBody());
     const clearButton = buttons.createEl("button", { text: "Clear" });
     clearButton.addEventListener("click", () => {
       this.currentContext = null;
@@ -1235,6 +1282,23 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.completedMs = null;
       this.render();
     });
+  }
+  selectNoteBody() {
+    const info = this.plugin.selectionService.getActiveMarkdownInfo();
+    if (!(info == null ? void 0 : info.editor)) {
+      this.setError("Switch to a Markdown editor first.");
+      new import_obsidian4.Notice("Switch to a Markdown editor first.");
+      return;
+    }
+    const { from, to } = getNoteBodyRange(info.editor);
+    const bodyText = info.editor.getRange(from, to);
+    if (!bodyText.trim()) {
+      this.setError("This note has no body text to select.");
+      new import_obsidian4.Notice("This note has no body text to select.");
+      return;
+    }
+    info.editor.setSelection(from, to);
+    this.useCurrentSelection(true);
   }
   renderActions(root) {
     const generatePanel = root.createDiv({ cls: "format-assistant-action-group" });

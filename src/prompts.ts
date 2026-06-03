@@ -125,9 +125,6 @@ export const DIARY_ORGANIZE_PROMPT = `你正在执行“日记整理模式”。
 - [ ] 下午继续写作业
 - [ ] 晚上开始复习计划`;
 
-const COURSE_NOTE_PROMPT =
-	"整理为课程笔记：\n将内容整理成适合课程复习的 Markdown。优先突出主线、定义、关键公式、推导步骤、条件、易错点和复习抓手。不要扩写，不要补造知识点，不要添加 frontmatter、标题模板或总结套话。";
-
 const REVIEW_CARD_PROMPT =
 	"压缩为复习卡片：\n将内容压缩成高密度复习版。优先保留结论、公式、条件、关键词、易错点和最短必要解释。尽量短、准、可扫读，但不要遗漏原文关键逻辑，不要编造内容。";
 
@@ -136,6 +133,32 @@ const WIKI_CANDIDATES_PROMPT =
 
 const CONCISE_PROMPT =
 	"请将输入文本精简为更短、更清楚的 Markdown，不丢失核心公式、适用条件、定义、限制和关键结论。";
+
+export interface ModeRuntime {
+	maxTokens?: number;
+	timeoutSeconds?: number;
+}
+
+// Per-mode overrides for token budget and request timeout.
+// Modes not listed here fall back to the global settings values.
+export const MODE_RUNTIME: Partial<Record<FormatMode, ModeRuntime>> = {
+	// note/course produce longer structured output -> larger budget, longer wait.
+	"note-organize": { maxTokens: 2000, timeoutSeconds: 60 },
+	"course-note": { maxTokens: 2000, timeoutSeconds: 60 },
+	// diary output is usually shorter and faster.
+	"diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+};
+
+export function resolveModeRuntime(
+	mode: FormatMode,
+	settings: { maxTokens: number; timeoutSeconds: number }
+): { maxTokens: number; timeoutSeconds: number } {
+	const override = MODE_RUNTIME[mode] ?? {};
+	return {
+		maxTokens: override.maxTokens ?? settings.maxTokens,
+		timeoutSeconds: override.timeoutSeconds ?? settings.timeoutSeconds
+	};
+}
 
 export const FORMAT_MODES: FormatMode[] = [
 	"obsidian-markdown",
@@ -231,16 +254,13 @@ export function buildModePrompt(mode: FormatMode): string {
 		return OBSIDIAN_MARKDOWN_PROMPT;
 	}
 
-	if (mode === "note-organize") {
+	// course-note now follows the newer structured note-organize prompt.
+	if (mode === "note-organize" || mode === "course-note") {
 		return NOTE_ORGANIZE_PROMPT;
 	}
 
 	if (mode === "diary-organize") {
 		return DIARY_ORGANIZE_PROMPT;
-	}
-
-	if (mode === "course-note") {
-		return COURSE_NOTE_PROMPT;
 	}
 
 	if (mode === "review-card") {

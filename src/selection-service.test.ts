@@ -10,9 +10,18 @@ import {
 	countLines,
 	countWords,
 	describeInput,
+	getNoteBodyRange,
 	type CapturedInput,
 	SelectionService
 } from "./selection-service";
+
+function createLineEditor(text: string): Editor {
+	const lines = text.split("\n");
+	return {
+		lineCount: () => lines.length,
+		getLine: (i: number) => lines[i] ?? ""
+	} as unknown as Editor;
+}
 
 interface FakeEditorOptions {
 	selection?: string;
@@ -220,5 +229,36 @@ describe("SelectionService", () => {
 		expect(countWords("one two")).toBe(2);
 		expect(countLines("one\ntwo")).toBe(2);
 		expect(countLines("")).toBe(0);
+	});
+});
+
+describe("getNoteBodyRange", () => {
+	it("skips frontmatter and a leading heading", () => {
+		const editor = createLineEditor(
+			"---\ntags:\n  - daily\n---\n# Title\n\nFirst body line.\nSecond body line."
+		);
+
+		const range = getNoteBodyRange(editor);
+
+		expect(range.from).toEqual({ line: 6, ch: 0 });
+		expect(range.to).toEqual({ line: 7, ch: "Second body line.".length });
+	});
+
+	it("starts at line 0 when there is no frontmatter or heading", () => {
+		const editor = createLineEditor("Just body.\nMore body.");
+
+		const range = getNoteBodyRange(editor);
+
+		expect(range.from).toEqual({ line: 0, ch: 0 });
+		expect(range.to).toEqual({ line: 1, ch: "More body.".length });
+	});
+
+	it("skips a leading heading without frontmatter", () => {
+		const editor = createLineEditor("# Heading\n\nBody starts here.");
+
+		const range = getNoteBodyRange(editor);
+
+		expect(range.from).toEqual({ line: 2, ch: 0 });
+		expect(range.to).toEqual({ line: 2, ch: "Body starts here.".length });
 	});
 });
