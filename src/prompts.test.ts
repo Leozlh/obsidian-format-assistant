@@ -17,8 +17,12 @@ describe("buildModePrompt", () => {
 		expect(buildModePrompt("obsidian-markdown")).not.toContain("## 核心内容");
 	});
 
-	it("diary-organize stays its own mode", () => {
-		expect(buildModePrompt("diary-organize")).toContain("日记整理模式");
+	it("diary-organize preserves the timeline and completion status", () => {
+		const prompt = buildModePrompt("diary-organize");
+		expect(prompt).toContain("日记整理模式");
+		expect(prompt).toContain("时间顺序");
+		expect(prompt).toContain("- [x]");
+		expect(prompt).not.toContain("## 待办");
 	});
 });
 

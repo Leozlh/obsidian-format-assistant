@@ -31,9 +31,9 @@ const SIDEBAR_MODES: FormatMode[] = [
 ];
 
 const MODE_HINTS: Partial<Record<FormatMode, string>> = {
-	"obsidian-markdown": "轻整理：只规整排版，不重构内容。",
-	"note-organize": "结构化：提炼概念 / 公式 / 易错点，可加小标题。",
-	"diary-organize": "日记：保留语气，记录与待办分离。"
+	"obsidian-markdown": "Light cleanup: tidy layout only, no restructuring.",
+	"note-organize": "Structured: extract concepts / formulas / pitfalls, may add headings.",
+	"diary-organize": "Diary: keep the original tone; preserve the timeline; pull out real to-dos."
 };
 
 interface GenerateInput {
