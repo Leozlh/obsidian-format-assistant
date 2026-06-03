@@ -7,8 +7,8 @@ import {
 	WorkspaceLeaf
 } from "obsidian";
 import { applyApiProfile, type ApiProfile } from "./api-profiles";
-import { callChatCompletions } from "./api";
-import { FORMAT_TASKS, type FormatMode } from "./prompts";
+import { callChatCompletions, type ChatResult } from "./api";
+import { FORMAT_TASKS, GENERATIVE_MODES, type FormatMode } from "./prompts";
 import { PreviewModal } from "./preview-modal";
 import { FormatAssistantSettingTab } from "./settings";
 import {
@@ -204,7 +204,7 @@ export default class FormatAssistantPlugin extends Plugin {
 		customInstruction: string,
 		currentFileName?: string,
 		inputSource: "selection" | "manual" | "note" = "selection"
-	): Promise<string> {
+	): Promise<ChatResult> {
 		const validationError = this.validateApiSettings();
 		if (validationError) {
 			throw new Error(validationError);
@@ -276,19 +276,40 @@ export default class FormatAssistantPlugin extends Plugin {
 				"",
 				view?.file?.basename
 			);
+
+			if (result.truncated) {
+				new Notice("Output may be truncated (hit max tokens). Increase Max Tokens in settings.");
+			}
+
+			const isGenerative = GENERATIVE_MODES.includes(mode);
+			const ensureSameSelection = (): boolean => {
+				if (editor.getRange(selectionStart, selectionEnd) !== selection) {
+					new Notice("Selection changed. Please select the text again.");
+					return false;
+				}
+				return true;
+			};
+
 			new PreviewModal(this.app, {
 				originalText: selection,
-				resultText: result,
+				resultText: result.content,
 				showOriginal: this.settings.previewBeforeReplace,
+				// Generative modes (e.g. wiki candidates, review card) derive new
+				// content, so inserting is the safe default; reformatting modes replace.
+				primaryAction: isGenerative ? "insert" : "replace",
 				onReplace: () => {
-					const currentRange = editor.getRange(selectionStart, selectionEnd);
-					if (currentRange !== selection) {
-						new Notice("Selection changed. Please select the text again.");
+					if (!ensureSameSelection()) {
 						return;
 					}
-
-					editor.replaceRange(result, selectionStart, selectionEnd);
+					editor.replaceRange(result.content, selectionStart, selectionEnd);
 					new Notice("Selection replaced.");
+				},
+				onInsertBelow: () => {
+					if (!ensureSameSelection()) {
+						return;
+					}
+					editor.replaceRange(`\n\n${result.content}`, selectionEnd);
+					new Notice("Result inserted below selection.");
 				}
 			}).open();
 		} catch (error) {

@@ -170,6 +170,7 @@ function resolveModeRuntime(mode, settings) {
     timeoutSeconds: (_c = override.timeoutSeconds) != null ? _c : settings.timeoutSeconds
   };
 }
+var GENERATIVE_MODES = ["review-card", "wiki-candidates"];
 var FORMAT_MODE_LABELS = {
   "obsidian-markdown": "Obsidian Markdown",
   "note-organize": "Note Organize",
@@ -300,7 +301,7 @@ function inputSourceLabel(source) {
 
 // src/api.ts
 async function callChatCompletions(settings, promptOptions) {
-  var _a, _b, _c;
+  var _a, _b;
   const { maxTokens, timeoutSeconds } = resolveModeRuntime(promptOptions.mode, settings);
   const controller = new AbortController();
   const timeout = window.setTimeout(
@@ -327,11 +328,15 @@ async function callChatCompletions(settings, promptOptions) {
     if (!response.ok) {
       throw new Error(statusToMessage(response.status, data));
     }
-    const content = (_c = (_b = (_a = data.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content;
+    const choice = (_a = data.choices) == null ? void 0 : _a[0];
+    const content = (_b = choice == null ? void 0 : choice.message) == null ? void 0 : _b.content;
     if (!content || typeof content !== "string") {
       throw new Error("API returned an unexpected response format: missing choices[0].message.content.");
     }
-    return stripCodeFence(content);
+    return {
+      content: stripCodeFence(content),
+      truncated: (choice == null ? void 0 : choice.finish_reason) === "length"
+    };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error(
@@ -387,11 +392,14 @@ function statusToMessage(status, data) {
 var import_obsidian = require("obsidian");
 var PreviewModal = class extends import_obsidian.Modal {
   constructor(app, options) {
+    var _a;
     super(app);
     this.originalText = options.originalText;
     this.resultText = options.resultText;
     this.showOriginal = options.showOriginal;
     this.onReplace = options.onReplace;
+    this.onInsertBelow = options.onInsertBelow;
+    this.primaryAction = (_a = options.primaryAction) != null ? _a : "replace";
   }
   onOpen() {
     const { contentEl } = this;
@@ -406,12 +414,23 @@ var PreviewModal = class extends import_obsidian.Modal {
     const actions = contentEl.createDiv({ cls: "format-assistant-preview__actions" });
     const replaceButton = actions.createEl("button", {
       text: "Replace selection",
-      cls: "mod-cta"
+      cls: this.primaryAction === "replace" ? "mod-cta" : ""
     });
     replaceButton.addEventListener("click", () => {
       this.onReplace();
       this.close();
     });
+    if (this.onInsertBelow) {
+      const insertButton = actions.createEl("button", {
+        text: "Insert below selection",
+        cls: this.primaryAction === "insert" ? "mod-cta" : ""
+      });
+      insertButton.addEventListener("click", () => {
+        var _a;
+        (_a = this.onInsertBelow) == null ? void 0 : _a.call(this);
+        this.close();
+      });
+    }
     const copyButton = actions.createEl("button", { text: "Copy result" });
     copyButton.addEventListener("click", async () => {
       await navigator.clipboard.writeText(this.resultText);
@@ -1426,15 +1445,16 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.render();
     const startedAt = performance.now();
     try {
-      this.outputText = await this.plugin.generateFromSelection(
+      const result = await this.plugin.generateFromSelection(
         this.mode,
         input.text,
         this.customInstruction,
         input.currentFileName,
         input.source
       );
+      this.outputText = result.content;
       this.completedMs = Math.round(performance.now() - startedAt);
-      this.statusText = `Generated from: ${this.formatInputSource(input.source)}. Completed in ${this.completedMs} ms.`;
+      this.statusText = result.truncated ? `\u26A0\uFE0F Output may be truncated (hit max tokens). Increase Max Tokens. Generated from: ${this.formatInputSource(input.source)} in ${this.completedMs} ms.` : `Generated from: ${this.formatInputSource(input.source)}. Completed in ${this.completedMs} ms.`;
     } catch (error) {
       this.completedMs = Math.round(performance.now() - startedAt);
       this.errorText = this.plugin.toUserError(error);
@@ -1893,18 +1913,39 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
         "",
         (_a = view == null ? void 0 : view.file) == null ? void 0 : _a.basename
       );
+      if (result.truncated) {
+        new import_obsidian5.Notice("Output may be truncated (hit max tokens). Increase Max Tokens in settings.");
+      }
+      const isGenerative = GENERATIVE_MODES.includes(mode);
+      const ensureSameSelection = () => {
+        if (editor.getRange(selectionStart, selectionEnd) !== selection) {
+          new import_obsidian5.Notice("Selection changed. Please select the text again.");
+          return false;
+        }
+        return true;
+      };
       new PreviewModal(this.app, {
         originalText: selection,
-        resultText: result,
+        resultText: result.content,
         showOriginal: this.settings.previewBeforeReplace,
+        // Generative modes (e.g. wiki candidates, review card) derive new
+        // content, so inserting is the safe default; reformatting modes replace.
+        primaryAction: isGenerative ? "insert" : "replace",
         onReplace: () => {
-          const currentRange = editor.getRange(selectionStart, selectionEnd);
-          if (currentRange !== selection) {
-            new import_obsidian5.Notice("Selection changed. Please select the text again.");
+          if (!ensureSameSelection()) {
             return;
           }
-          editor.replaceRange(result, selectionStart, selectionEnd);
+          editor.replaceRange(result.content, selectionStart, selectionEnd);
           new import_obsidian5.Notice("Selection replaced.");
+        },
+        onInsertBelow: () => {
+          if (!ensureSameSelection()) {
+            return;
+          }
+          editor.replaceRange(`
+
+${result.content}`, selectionEnd);
+          new import_obsidian5.Notice("Result inserted below selection.");
         }
       }).open();
     } catch (error) {

@@ -595,15 +595,18 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		const startedAt = performance.now();
 		try {
-			this.outputText = await this.plugin.generateFromSelection(
+			const result = await this.plugin.generateFromSelection(
 				this.mode,
 				input.text,
 				this.customInstruction,
 				input.currentFileName,
 				input.source
 			);
+			this.outputText = result.content;
 			this.completedMs = Math.round(performance.now() - startedAt);
-			this.statusText = `Generated from: ${this.formatInputSource(input.source)}. Completed in ${this.completedMs} ms.`;
+			this.statusText = result.truncated
+				? `⚠️ Output may be truncated (hit max tokens). Increase Max Tokens. Generated from: ${this.formatInputSource(input.source)} in ${this.completedMs} ms.`
+				: `Generated from: ${this.formatInputSource(input.source)}. Completed in ${this.completedMs} ms.`;
 		} catch (error) {
 			this.completedMs = Math.round(performance.now() - startedAt);
 			this.errorText = this.plugin.toUserError(error);

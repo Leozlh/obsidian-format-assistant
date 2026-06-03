@@ -149,6 +149,10 @@ export function resolveModeRuntime(
 	};
 }
 
+// Modes that derive NEW content (vs reformatting the input in place). For these,
+// replacing the source selection is usually wrong — inserting is the safe default.
+export const GENERATIVE_MODES: FormatMode[] = ["review-card", "wiki-candidates"];
+
 export const FORMAT_MODES: FormatMode[] = [
 	"obsidian-markdown",
 	"note-organize",

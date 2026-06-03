@@ -11,6 +11,7 @@ interface ChatCompletionResponse {
 		message?: {
 			content?: string;
 		};
+		finish_reason?: string;
 	}>;
 	error?: {
 		message?: string;
@@ -18,10 +19,15 @@ interface ChatCompletionResponse {
 	};
 }
 
+export interface ChatResult {
+	content: string;
+	truncated: boolean;
+}
+
 export async function callChatCompletions(
 	settings: FormatAssistantSettings,
 	promptOptions: PromptOptions
-): Promise<string> {
+): Promise<ChatResult> {
 	const { maxTokens, timeoutSeconds } = resolveModeRuntime(promptOptions.mode, settings);
 	const controller = new AbortController();
 	const timeout = window.setTimeout(
@@ -52,12 +58,16 @@ export async function callChatCompletions(
 			throw new Error(statusToMessage(response.status, data));
 		}
 
-		const content = data.choices?.[0]?.message?.content;
+		const choice = data.choices?.[0];
+		const content = choice?.message?.content;
 		if (!content || typeof content !== "string") {
 			throw new Error("API returned an unexpected response format: missing choices[0].message.content.");
 		}
 
-		return stripCodeFence(content);
+		return {
+			content: stripCodeFence(content),
+			truncated: choice?.finish_reason === "length"
+		};
 	} catch (error) {
 		if (error instanceof DOMException && error.name === "AbortError") {
 			throw new Error(

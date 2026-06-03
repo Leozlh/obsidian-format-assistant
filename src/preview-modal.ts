@@ -5,6 +5,8 @@ export class PreviewModal extends Modal {
 	private resultText: string;
 	private showOriginal: boolean;
 	private onReplace: () => void;
+	private onInsertBelow?: () => void;
+	private primaryAction: "replace" | "insert";
 
 	constructor(
 		app: App,
@@ -13,6 +15,8 @@ export class PreviewModal extends Modal {
 			resultText: string;
 			showOriginal: boolean;
 			onReplace: () => void;
+			onInsertBelow?: () => void;
+			primaryAction?: "replace" | "insert";
 		}
 	) {
 		super(app);
@@ -20,6 +24,8 @@ export class PreviewModal extends Modal {
 		this.resultText = options.resultText;
 		this.showOriginal = options.showOriginal;
 		this.onReplace = options.onReplace;
+		this.onInsertBelow = options.onInsertBelow;
+		this.primaryAction = options.primaryAction ?? "replace";
 	}
 
 	onOpen() {
@@ -41,12 +47,23 @@ export class PreviewModal extends Modal {
 
 		const replaceButton = actions.createEl("button", {
 			text: "Replace selection",
-			cls: "mod-cta"
+			cls: this.primaryAction === "replace" ? "mod-cta" : ""
 		});
 		replaceButton.addEventListener("click", () => {
 			this.onReplace();
 			this.close();
 		});
+
+		if (this.onInsertBelow) {
+			const insertButton = actions.createEl("button", {
+				text: "Insert below selection",
+				cls: this.primaryAction === "insert" ? "mod-cta" : ""
+			});
+			insertButton.addEventListener("click", () => {
+				this.onInsertBelow?.();
+				this.close();
+			});
+		}
 
 		const copyButton = actions.createEl("button", { text: "Copy result" });
 		copyButton.addEventListener("click", async () => {
