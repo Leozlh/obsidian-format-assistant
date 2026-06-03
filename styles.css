@@ -201,10 +201,41 @@
 	min-height: 28px;
 	padding: 3px 8px;
 	font-size: var(--font-ui-small);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .format-assistant-button-row--compact button {
-	flex-basis: 70px;
+	flex-basis: 76px;
+}
+
+.format-assistant-mode-block {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.format-assistant-mode-hint {
+	line-height: 1.35;
+}
+
+.format-assistant-collapsible {
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 4px;
+}
+
+.format-assistant-collapsible-summary {
+	cursor: pointer;
+	list-style: revert;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+	padding: 2px 0;
+}
+
+.format-assistant-collapsible[open] > .format-assistant-panel {
+	margin-top: 6px;
 }
 
 .format-assistant-action-group {

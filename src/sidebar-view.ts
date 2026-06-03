@@ -30,6 +30,12 @@ const SIDEBAR_MODES: FormatMode[] = [
 	"diary-organize"
 ];
 
+const MODE_HINTS: Partial<Record<FormatMode, string>> = {
+	"obsidian-markdown": "轻整理：只规整排版，不重构内容。",
+	"note-organize": "结构化：提炼概念 / 公式 / 易错点，可加小标题。",
+	"diary-organize": "日记：保留语气，记录与待办分离。"
+};
+
 interface GenerateInput {
 	text: string;
 	source: InputSource;
@@ -96,11 +102,21 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.renderApiProfileSelector(root);
 		this.renderContextPreview(root);
 		this.renderModeSelector(root);
-		this.renderManualInput(root);
 		this.renderInput(root);
-		this.renderPromptPresets(root);
 		this.renderActions(root);
+		this.renderManualInput(root);
+		this.renderPromptPresets(root);
 		this.renderStatus(root);
+	}
+
+	private createCollapsibleSection(root: HTMLElement, title: string, open: boolean): HTMLElement {
+		const details = root.createEl("details", { cls: "format-assistant-collapsible" });
+		details.open = open;
+		details.createEl("summary", {
+			cls: "format-assistant-collapsible-summary",
+			text: title
+		});
+		return details.createDiv({ cls: "format-assistant-panel" });
 	}
 
 	refreshContextStatus(): void {
@@ -218,22 +234,20 @@ export class FormatAssistantSidebarView extends ItemView {
 		const preview = this.getDisplayedContextPreview();
 
 		const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
+		const hasContent = Boolean(preview.text.trim());
 		const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
 		meta.createSpan({ text: `Current file: ${fileName}` });
 		meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
-		meta.createSpan({
-			text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
-		});
+		if (hasContent) {
+			meta.createSpan({
+				text: `${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
+			});
+		}
 
-
-		if (!preview.text.trim()) {
+		if (!hasContent) {
 			panel.createDiv({
 				cls: "format-assistant-empty format-assistant-context-preview",
-				text: "No context captured yet. Select text, or click Use / Refresh to use the current note body."
-			});
-			panel.createDiv({
-				cls: "format-assistant-muted format-assistant-hint",
-				text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
+				text: "No context captured. Select text, then Use / Refresh."
 			});
 			this.renderSelectionControls(panel);
 			return;
@@ -242,10 +256,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		panel.createEl("pre", {
 			cls: "format-assistant-context-preview",
 			text: preview.text
-		});
-		panel.createDiv({
-			cls: "format-assistant-muted format-assistant-hint",
-			text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
 		});
 		this.renderSelectionControls(panel);
 	}
@@ -261,7 +271,8 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private renderModeSelector(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-inline-field" });
+		const wrapper = root.createDiv({ cls: "format-assistant-mode-block" });
+		const panel = wrapper.createDiv({ cls: "format-assistant-inline-field" });
 		panel.createSpan({ text: "Mode:" });
 
 		const select = panel.createEl("select", { cls: "format-assistant-select format-assistant-mode-select" });
@@ -272,11 +283,17 @@ export class FormatAssistantSidebarView extends ItemView {
 			});
 		}
 
+		const hint = wrapper.createDiv({
+			cls: "format-assistant-muted format-assistant-mode-hint",
+			text: MODE_HINTS[this.mode] ?? ""
+		});
+
 		select.value = this.mode;
 		select.addEventListener("change", () => {
 			this.mode = select.value as FormatMode;
 			this.plugin.settings.sidebarDefaultMode = this.mode;
 			void this.plugin.saveSettings();
+			hint.setText(MODE_HINTS[this.mode] ?? "");
 			this.statusText = `Mode: ${FORMAT_MODE_LABELS[this.mode]}.`;
 			this.errorText = "";
 			this.render();
@@ -284,10 +301,12 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private renderManualInput(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-panel" });
-		const header = panel.createDiv({ cls: "format-assistant-section-header" });
-		header.createEl("h3", { text: "Manual Input" });
-		const manualStats = header.createSpan({
+		const panel = this.createCollapsibleSection(
+			root,
+			"Manual Input",
+			Boolean(this.manualInput.trim())
+		);
+		const manualStats = panel.createDiv({
 			cls: "format-assistant-muted",
 			text: this.getManualInputStatsText()
 		});
@@ -295,20 +314,10 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.manualInputEl = panel.createEl("textarea", {
 			cls: "format-assistant-textarea format-assistant-manual-input",
 			attr: {
-				placeholder: "Paste text here if you want to process manual input instead of the current selection."
+				placeholder: "Paste text to process instead of the selection. Takes priority when non-empty."
 			}
 		});
 		this.manualInputEl.value = this.manualInput;
-
-		panel.createDiv({
-			cls: "format-assistant-muted format-assistant-hint",
-			text: "Manual input takes priority over captured selection when non-empty."
-		});
-
-		const sourceStatus = panel.createDiv({
-			cls: "format-assistant-input-source",
-			text: `Input source: ${this.getCurrentInputSourceLabel()}`
-		});
 
 		const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
 		const clearButton = buttons.createEl("button", { text: "Clear manual input" });
@@ -323,8 +332,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.manualInputEl.addEventListener("input", () => {
 			this.manualInput = this.manualInputEl?.value ?? "";
 			manualStats.setText(this.getManualInputStatsText());
-			sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
 			clearButton.disabled = !this.manualInput;
+			this.refreshContextPreview();
 		});
 	}
 
@@ -345,13 +354,11 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private renderPromptPresets(root: HTMLElement): void {
-		const panel = root.createDiv({ cls: "format-assistant-panel" });
-		const header = panel.createDiv({ cls: "format-assistant-section-header" });
-		header.createEl("h3", { text: "Prompt Presets" });
-		header.createSpan({
-			cls: "format-assistant-muted",
-			text: `${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS}`
-		});
+		const panel = this.createCollapsibleSection(
+			root,
+			`Prompt Presets (${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS})`,
+			false
+		);
 
 		const select = panel.createEl("select", { cls: "format-assistant-select" });
 		select.createEl("option", {
@@ -401,7 +408,8 @@ export class FormatAssistantSidebarView extends ItemView {
 		const refreshButton = buttons.createEl("button", { text: "Refresh" });
 		refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
 
-		const bodyButton = buttons.createEl("button", { text: "Select note body" });
+		const bodyButton = buttons.createEl("button", { text: "Note body" });
+		bodyButton.setAttribute("aria-label", "Select note body");
 		bodyButton.addEventListener("click", () => this.selectNoteBody());
 
 		const clearButton = buttons.createEl("button", { text: "Clear" });

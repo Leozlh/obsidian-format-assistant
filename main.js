@@ -971,6 +971,11 @@ var SIDEBAR_MODES = [
   "note-organize",
   "diary-organize"
 ];
+var MODE_HINTS = {
+  "obsidian-markdown": "\u8F7B\u6574\u7406\uFF1A\u53EA\u89C4\u6574\u6392\u7248\uFF0C\u4E0D\u91CD\u6784\u5185\u5BB9\u3002",
+  "note-organize": "\u7ED3\u6784\u5316\uFF1A\u63D0\u70BC\u6982\u5FF5 / \u516C\u5F0F / \u6613\u9519\u70B9\uFF0C\u53EF\u52A0\u5C0F\u6807\u9898\u3002",
+  "diary-organize": "\u65E5\u8BB0\uFF1A\u4FDD\u7559\u8BED\u6C14\uFF0C\u8BB0\u5F55\u4E0E\u5F85\u529E\u5206\u79BB\u3002"
+};
 var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -1019,11 +1024,20 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.renderApiProfileSelector(root);
     this.renderContextPreview(root);
     this.renderModeSelector(root);
-    this.renderManualInput(root);
     this.renderInput(root);
-    this.renderPromptPresets(root);
     this.renderActions(root);
+    this.renderManualInput(root);
+    this.renderPromptPresets(root);
     this.renderStatus(root);
+  }
+  createCollapsibleSection(root, title, open) {
+    const details = root.createEl("details", { cls: "format-assistant-collapsible" });
+    details.open = open;
+    details.createEl("summary", {
+      cls: "format-assistant-collapsible-summary",
+      text: title
+    });
+    return details.createDiv({ cls: "format-assistant-panel" });
   }
   refreshContextStatus() {
     var _a, _b, _c, _d, _e, _f;
@@ -1116,20 +1130,19 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     header.createEl("h3", { text: "Context Preview" });
     const preview = this.getDisplayedContextPreview();
     const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
+    const hasContent = Boolean(preview.text.trim());
     const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
     meta.createSpan({ text: `Current file: ${fileName}` });
     meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
-    meta.createSpan({
-      text: `Captured: ${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
-    });
-    if (!preview.text.trim()) {
+    if (hasContent) {
+      meta.createSpan({
+        text: `${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
+      });
+    }
+    if (!hasContent) {
       panel.createDiv({
         cls: "format-assistant-empty format-assistant-context-preview",
-        text: "No context captured yet. Select text, or click Use / Refresh to use the current note body."
-      });
-      panel.createDiv({
-        cls: "format-assistant-muted format-assistant-hint",
-        text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
+        text: "No context captured. Select text, then Use / Refresh."
       });
       this.renderSelectionControls(panel);
       return;
@@ -1137,10 +1150,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     panel.createEl("pre", {
       cls: "format-assistant-context-preview",
       text: preview.text
-    });
-    panel.createDiv({
-      cls: "format-assistant-muted format-assistant-hint",
-      text: "Use or Refresh captures the selection first. With no selection, it falls back to the current note body."
     });
     this.renderSelectionControls(panel);
   }
@@ -1153,7 +1162,9 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.renderContextPreviewContent(this.contextPanelEl);
   }
   renderModeSelector(root) {
-    const panel = root.createDiv({ cls: "format-assistant-inline-field" });
+    var _a;
+    const wrapper = root.createDiv({ cls: "format-assistant-mode-block" });
+    const panel = wrapper.createDiv({ cls: "format-assistant-inline-field" });
     panel.createSpan({ text: "Mode:" });
     const select = panel.createEl("select", { cls: "format-assistant-select format-assistant-mode-select" });
     for (const mode of SIDEBAR_MODES) {
@@ -1162,39 +1173,39 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
         value: mode
       });
     }
+    const hint = wrapper.createDiv({
+      cls: "format-assistant-muted format-assistant-mode-hint",
+      text: (_a = MODE_HINTS[this.mode]) != null ? _a : ""
+    });
     select.value = this.mode;
     select.addEventListener("change", () => {
+      var _a2;
       this.mode = select.value;
       this.plugin.settings.sidebarDefaultMode = this.mode;
       void this.plugin.saveSettings();
+      hint.setText((_a2 = MODE_HINTS[this.mode]) != null ? _a2 : "");
       this.statusText = `Mode: ${FORMAT_MODE_LABELS[this.mode]}.`;
       this.errorText = "";
       this.render();
     });
   }
   renderManualInput(root) {
-    const panel = root.createDiv({ cls: "format-assistant-panel" });
-    const header = panel.createDiv({ cls: "format-assistant-section-header" });
-    header.createEl("h3", { text: "Manual Input" });
-    const manualStats = header.createSpan({
+    const panel = this.createCollapsibleSection(
+      root,
+      "Manual Input",
+      Boolean(this.manualInput.trim())
+    );
+    const manualStats = panel.createDiv({
       cls: "format-assistant-muted",
       text: this.getManualInputStatsText()
     });
     this.manualInputEl = panel.createEl("textarea", {
       cls: "format-assistant-textarea format-assistant-manual-input",
       attr: {
-        placeholder: "Paste text here if you want to process manual input instead of the current selection."
+        placeholder: "Paste text to process instead of the selection. Takes priority when non-empty."
       }
     });
     this.manualInputEl.value = this.manualInput;
-    panel.createDiv({
-      cls: "format-assistant-muted format-assistant-hint",
-      text: "Manual input takes priority over captured selection when non-empty."
-    });
-    const sourceStatus = panel.createDiv({
-      cls: "format-assistant-input-source",
-      text: `Input source: ${this.getCurrentInputSourceLabel()}`
-    });
     const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
     const clearButton = buttons.createEl("button", { text: "Clear manual input" });
     clearButton.disabled = !this.manualInput;
@@ -1207,8 +1218,8 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       var _a, _b;
       this.manualInput = (_b = (_a = this.manualInputEl) == null ? void 0 : _a.value) != null ? _b : "";
       manualStats.setText(this.getManualInputStatsText());
-      sourceStatus.setText(`Input source: ${this.getCurrentInputSourceLabel()}`);
       clearButton.disabled = !this.manualInput;
+      this.refreshContextPreview();
     });
   }
   renderInput(root) {
@@ -1227,13 +1238,11 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     });
   }
   renderPromptPresets(root) {
-    const panel = root.createDiv({ cls: "format-assistant-panel" });
-    const header = panel.createDiv({ cls: "format-assistant-section-header" });
-    header.createEl("h3", { text: "Prompt Presets" });
-    header.createSpan({
-      cls: "format-assistant-muted",
-      text: `${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS}`
-    });
+    const panel = this.createCollapsibleSection(
+      root,
+      `Prompt Presets (${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS})`,
+      false
+    );
     const select = panel.createEl("select", { cls: "format-assistant-select" });
     select.createEl("option", {
       text: this.plugin.settings.promptPresets.length ? "Select a preset" : "No presets saved",
@@ -1272,7 +1281,8 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     useButton.addEventListener("click", () => this.useCurrentSelection(true));
     const refreshButton = buttons.createEl("button", { text: "Refresh" });
     refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
-    const bodyButton = buttons.createEl("button", { text: "Select note body" });
+    const bodyButton = buttons.createEl("button", { text: "Note body" });
+    bodyButton.setAttribute("aria-label", "Select note body");
     bodyButton.addEventListener("click", () => this.selectNoteBody());
     const clearButton = buttons.createEl("button", { text: "Clear" });
     clearButton.addEventListener("click", () => {
