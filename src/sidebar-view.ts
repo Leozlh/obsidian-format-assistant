@@ -83,6 +83,11 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.captureCurrentSelection(false);
 		this.render();
 		this.refreshContextStatus();
+		// The editor fires no event on selection change, so the preview can go
+		// stale. Refresh it whenever the user turns to the sidebar.
+		this.registerDomEvent(this.contentEl, "pointerenter", () => {
+			this.refreshContextStatus();
+		});
 		if (this.plugin.settings.autoUseSelectionOnSidebarOpen) {
 			this.useCurrentSelection(false);
 		}
@@ -477,18 +482,20 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 
 		const replaceButton = resultButtons.createEl("button", {
-			text: "Replace selection",
+			text: "Replace",
 			cls: "format-assistant-result-secondary"
 		});
+		replaceButton.setAttribute("aria-label", "Replace selection");
 		replaceButton.disabled = !canWriteSelection;
 		replaceButton.addEventListener("click", () => {
 			this.confirmReplace();
 		});
 
 		const insertButton = resultButtons.createEl("button", {
-			text: "Insert below selection",
+			text: "Insert below",
 			cls: "format-assistant-result-secondary"
 		});
+		insertButton.setAttribute("aria-label", "Insert below selection");
 		insertButton.disabled = !canWriteSelection;
 		insertButton.addEventListener("click", () => {
 			this.confirmInsertBelow();
@@ -760,6 +767,12 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		if (this.currentContext?.source === "note" && this.currentContext.text.trim()) {
 			return "Current note fallback";
+		}
+
+		// Nothing captured yet, but the editor may have a live selection that
+		// the preview is already showing — reflect it instead of "None".
+		if (this.plugin.selectionService.getActiveSelectionPreview().text.trim()) {
+			return "Selection (uncaptured — click Use)";
 		}
 
 		return "None";

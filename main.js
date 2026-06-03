@@ -997,6 +997,9 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.captureCurrentSelection(false);
     this.render();
     this.refreshContextStatus();
+    this.registerDomEvent(this.contentEl, "pointerenter", () => {
+      this.refreshContextStatus();
+    });
     if (this.plugin.settings.autoUseSelectionOnSidebarOpen) {
       this.useCurrentSelection(false);
     }
@@ -1326,17 +1329,19 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       void this.copyResult();
     });
     const replaceButton = resultButtons.createEl("button", {
-      text: "Replace selection",
+      text: "Replace",
       cls: "format-assistant-result-secondary"
     });
+    replaceButton.setAttribute("aria-label", "Replace selection");
     replaceButton.disabled = !canWriteSelection;
     replaceButton.addEventListener("click", () => {
       this.confirmReplace();
     });
     const insertButton = resultButtons.createEl("button", {
-      text: "Insert below selection",
+      text: "Insert below",
       cls: "format-assistant-result-secondary"
     });
+    insertButton.setAttribute("aria-label", "Insert below selection");
     insertButton.disabled = !canWriteSelection;
     insertButton.addEventListener("click", () => {
       this.confirmInsertBelow();
@@ -1574,6 +1579,9 @@ ${this.outputText}`,
     }
     if (((_b = this.currentContext) == null ? void 0 : _b.source) === "note" && this.currentContext.text.trim()) {
       return "Current note fallback";
+    }
+    if (this.plugin.selectionService.getActiveSelectionPreview().text.trim()) {
+      return "Selection (uncaptured \u2014 click Use)";
     }
     return "None";
   }
