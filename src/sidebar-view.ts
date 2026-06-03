@@ -129,7 +129,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!this.selectionContext && !this.noteFallbackContext) {
 			this.statusText = selection.trim()
 				? `Active file: ${activeName}. Current editor has a selection.`
-				: `Active file: ${activeName}. No selection captured.`;
+				: `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
 		}
 
 		this.render();
@@ -145,7 +145,11 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		if (showNotice) {
-			new Notice("Selection sent to Format Assistant.");
+			new Notice(
+				this.noteFallbackContext
+					? "Current note body sent to Format Assistant."
+					: "Selection sent to Format Assistant."
+			);
 		}
 	}
 
@@ -242,7 +246,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!preview.text.trim()) {
 			panel.createDiv({
 				cls: "format-assistant-empty format-assistant-context-preview",
-				text: "No selection captured. Select text in an editor, then click Refresh. If there is no selection, the current note body can be used as fallback."
+				text: "No context captured yet. Select text, or click Use / Refresh to use the current note body."
 			});
 			panel.createDiv({
 				cls: "format-assistant-muted format-assistant-hint",
@@ -856,10 +860,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.errorText = "";
 		this.render();
 
-		if (showNotice) {
-			new Notice("No selection found. Using current note body as input.");
-		}
-
 		return true;
 	}
 
@@ -875,7 +875,11 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		if (!this.selectionContext?.text.trim()) {
 			this.captureCurrentSelection(false);
-			if (this.currentSelection?.text.trim()) {
+			if (
+				this.currentSelection?.text.trim() &&
+				this.currentSelection.from &&
+				this.currentSelection.to
+			) {
 				this.setSelectionContextFromPreview(this.currentSelection);
 			}
 		}

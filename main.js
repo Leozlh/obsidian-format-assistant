@@ -835,7 +835,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     const selection = (_d = (_c = (_a = info == null ? void 0 : info.editor) == null ? void 0 : _a.getSelection()) != null ? _c : (_b = this.selectionContext) == null ? void 0 : _b.text) != null ? _d : "";
     const activeName = (_j = (_i = (_g = (_e = this.selectionContext) == null ? void 0 : _e.fileName) != null ? _g : (_f = this.noteFallbackContext) == null ? void 0 : _f.fileName) != null ? _i : (_h = info == null ? void 0 : info.file) == null ? void 0 : _h.basename) != null ? _j : "No active Markdown file";
     if (!this.selectionContext && !this.noteFallbackContext) {
-      this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. No selection captured.`;
+      this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
     }
     this.render();
   }
@@ -848,7 +848,9 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
       return;
     }
     if (showNotice) {
-      new import_obsidian3.Notice("Selection sent to Format Assistant.");
+      new import_obsidian3.Notice(
+        this.noteFallbackContext ? "Current note body sent to Format Assistant." : "Selection sent to Format Assistant."
+      );
     }
   }
   setContextFromEditor(editor, view, showNotice) {
@@ -931,7 +933,7 @@ var FormatAssistantSidebarView = class extends import_obsidian3.ItemView {
     if (!preview.text.trim()) {
       panel.createDiv({
         cls: "format-assistant-empty format-assistant-context-preview",
-        text: "No selection captured. Select text in an editor, then click Refresh. If there is no selection, the current note body can be used as fallback."
+        text: "No context captured yet. Select text, or click Use / Refresh to use the current note body."
       });
       panel.createDiv({
         cls: "format-assistant-muted format-assistant-hint",
@@ -1460,9 +1462,6 @@ ${this.outputText}`,
     this.statusText = `Using current note fallback: ${this.describeText(cleanedText)}.`;
     this.errorText = "";
     this.render();
-    if (showNotice) {
-      new import_obsidian3.Notice("No selection found. Using current note body as input.");
-    }
     return true;
   }
   resolveInputForGenerate() {
@@ -1477,7 +1476,7 @@ ${this.outputText}`,
     }
     if (!((_d = this.selectionContext) == null ? void 0 : _d.text.trim())) {
       this.captureCurrentSelection(false);
-      if ((_e = this.currentSelection) == null ? void 0 : _e.text.trim()) {
+      if (((_e = this.currentSelection) == null ? void 0 : _e.text.trim()) && this.currentSelection.from && this.currentSelection.to) {
         this.setSelectionContextFromPreview(this.currentSelection);
       }
     }
