@@ -152,13 +152,9 @@ var DIARY_ORGANIZE_PROMPT = `\u4F60\u6B63\u5728\u6267\u884C\u201C\u65E5\u8BB0\u6
   - [ ] \u590D\u4E60\u7B2C\u4E09\u7AE0\uFF08\u5B9E\u9645\uFF1A\u6CA1\u505A\uFF09
 - \u4E0B\u5348\uFF1A
   - [ ] \u5199\u5927\u7269\u62A5\u544A`;
-var REVIEW_CARD_PROMPT = "\u538B\u7F29\u4E3A\u590D\u4E60\u5361\u7247\uFF1A\n\u5C06\u5185\u5BB9\u538B\u7F29\u6210\u9AD8\u5BC6\u5EA6\u590D\u4E60\u7248\u3002\u4F18\u5148\u4FDD\u7559\u7ED3\u8BBA\u3001\u516C\u5F0F\u3001\u6761\u4EF6\u3001\u5173\u952E\u8BCD\u3001\u6613\u9519\u70B9\u548C\u6700\u77ED\u5FC5\u8981\u89E3\u91CA\u3002\u5C3D\u91CF\u77ED\u3001\u51C6\u3001\u53EF\u626B\u8BFB\uFF0C\u4F46\u4E0D\u8981\u9057\u6F0F\u539F\u6587\u5173\u952E\u903B\u8F91\uFF0C\u4E0D\u8981\u7F16\u9020\u5185\u5BB9\u3002";
-var WIKI_CANDIDATES_PROMPT = "\u63D0\u53D6 Wiki \u5019\u9009\u6761\u76EE\uFF1A\n\u4ECE\u5185\u5BB9\u4E2D\u63D0\u53D6\u9002\u5408\u5355\u72EC\u6C89\u6DC0\u4E3A Wiki \u7684\u6982\u5FF5\u3001\u516C\u5F0F\u3001\u65B9\u6CD5\u3001\u5B9A\u7406\u3001\u6A21\u578B\u6216\u5B9E\u9A8C\u672F\u8BED\u3002\u8F93\u51FA\u65F6\u6309\u6761\u76EE\u5217\u51FA\uFF0C\u6BCF\u4E2A\u6761\u76EE\u53EA\u4FDD\u7559\u6700\u5C0F\u5FC5\u8981\u5B9A\u4E49\u3001\u7528\u9014\u6216\u533A\u5206\u70B9\u3002\u4E0D\u8981\u81EA\u52A8\u521B\u5EFA\u94FE\u63A5\uFF0C\u4E0D\u8981\u6269\u5199\u6210\u5B8C\u6574\u6587\u7AE0\u3002";
-var CONCISE_PROMPT = "\u8BF7\u5C06\u8F93\u5165\u6587\u672C\u7CBE\u7B80\u4E3A\u66F4\u77ED\u3001\u66F4\u6E05\u695A\u7684 Markdown\uFF0C\u4E0D\u4E22\u5931\u6838\u5FC3\u516C\u5F0F\u3001\u9002\u7528\u6761\u4EF6\u3001\u5B9A\u4E49\u3001\u9650\u5236\u548C\u5173\u952E\u7ED3\u8BBA\u3002";
 var MODE_RUNTIME = {
-  // note/course produce longer structured output -> larger budget, longer wait.
+  // note-organize produces longer structured output -> larger budget, longer wait.
   "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
-  "course-note": { maxTokens: 2e3, timeoutSeconds: 60 },
   // diary output is usually shorter and faster.
   "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
 };
@@ -170,15 +166,10 @@ function resolveModeRuntime(mode, settings) {
     timeoutSeconds: (_c = override.timeoutSeconds) != null ? _c : settings.timeoutSeconds
   };
 }
-var GENERATIVE_MODES = ["review-card", "wiki-candidates"];
 var FORMAT_MODE_LABELS = {
   "obsidian-markdown": "Obsidian Markdown",
   "note-organize": "Note Organize",
   "diary-organize": "Diary Organize",
-  "course-note": "Course Note",
-  "review-card": "Review Card",
-  "wiki-candidates": "Wiki Candidates",
-  concise: "Concise",
   custom: "Custom Instruction"
 };
 var FORMAT_TASKS = [
@@ -196,26 +187,6 @@ var FORMAT_TASKS = [
     id: "organize-selection-as-diary",
     name: "Organize selection as diary",
     mode: "diary-organize"
-  },
-  {
-    id: "format-selection-as-course-note",
-    name: "Format selection as course note",
-    mode: "course-note"
-  },
-  {
-    id: "compress-selection-into-review-card",
-    name: "Compress selection into review card",
-    mode: "review-card"
-  },
-  {
-    id: "generate-wiki-candidates",
-    name: "Generate Wiki candidates",
-    mode: "wiki-candidates"
-  },
-  {
-    id: "make-selection-concise",
-    name: "Make selection concise",
-    mode: "concise"
   }
 ];
 function buildPromptMessages(systemPrompt, options) {
@@ -245,20 +216,11 @@ function buildModePrompt(mode) {
   if (mode === "obsidian-markdown") {
     return OBSIDIAN_MARKDOWN_PROMPT;
   }
-  if (mode === "note-organize" || mode === "course-note") {
+  if (mode === "note-organize") {
     return NOTE_ORGANIZE_PROMPT;
   }
   if (mode === "diary-organize") {
     return DIARY_ORGANIZE_PROMPT;
-  }
-  if (mode === "review-card") {
-    return REVIEW_CARD_PROMPT;
-  }
-  if (mode === "wiki-candidates") {
-    return WIKI_CANDIDATES_PROMPT;
-  }
-  if (mode === "concise") {
-    return CONCISE_PROMPT;
   }
   return "\u4F60\u6B63\u5728\u6267\u884C\u201C\u81EA\u5B9A\u4E49\u6307\u4EE4\u6A21\u5F0F\u201D\u3002\u8BF7\u6309\u7528\u6237\u4E34\u65F6 instruction \u5904\u7406\u8F93\u5165\u6587\u672C\uFF0C\u4F46\u4ECD\u5FC5\u987B\u9075\u5B88 system message \u4E2D\u7684\u901A\u7528\u89C4\u5219\u3002";
 }
@@ -1239,7 +1201,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.customInputEl = panel.createEl("textarea", {
       cls: "format-assistant-textarea",
       attr: {
-        placeholder: "Add temporary instructions, for example: keep it concise, preserve the original tone, or organize it as a clearer course note."
+        placeholder: "Add temporary instructions, for example: keep it concise, or preserve the original tone."
       }
     });
     this.customInputEl.value = this.customInstruction;
@@ -1408,9 +1370,16 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       });
       return;
     }
-    parent.createEl("pre", {
-      cls: "format-assistant-output",
-      text: this.outputText
+    const resultEl = parent.createEl("textarea", {
+      cls: "format-assistant-output format-assistant-output-editable"
+    });
+    resultEl.value = this.outputText;
+    resultEl.addEventListener("input", () => {
+      this.outputText = resultEl.value;
+    });
+    parent.createDiv({
+      cls: "format-assistant-muted format-assistant-hint",
+      text: "You can edit the result above before Copy / Replace / Insert."
     });
   }
   renderStatus(root) {
@@ -1916,7 +1885,6 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
       if (result.truncated) {
         new import_obsidian5.Notice("Output may be truncated (hit max tokens). Increase Max Tokens in settings.");
       }
-      const isGenerative = GENERATIVE_MODES.includes(mode);
       const ensureSameSelection = () => {
         if (editor.getRange(selectionStart, selectionEnd) !== selection) {
           new import_obsidian5.Notice("Selection changed. Please select the text again.");
@@ -1928,9 +1896,8 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
         originalText: selection,
         resultText: result.content,
         showOriginal: this.settings.previewBeforeReplace,
-        // Generative modes (e.g. wiki candidates, review card) derive new
-        // content, so inserting is the safe default; reformatting modes replace.
-        primaryAction: isGenerative ? "insert" : "replace",
+        // Reformatting modes default to Replace; Insert below is offered too.
+        primaryAction: "replace",
         onReplace: () => {
           if (!ensureSameSelection()) {
             return;

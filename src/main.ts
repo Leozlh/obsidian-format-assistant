@@ -8,7 +8,7 @@ import {
 } from "obsidian";
 import { applyApiProfile, type ApiProfile } from "./api-profiles";
 import { callChatCompletions, type ChatResult } from "./api";
-import { FORMAT_TASKS, GENERATIVE_MODES, type FormatMode } from "./prompts";
+import { FORMAT_TASKS, type FormatMode } from "./prompts";
 import { PreviewModal } from "./preview-modal";
 import { FormatAssistantSettingTab } from "./settings";
 import {
@@ -281,7 +281,6 @@ export default class FormatAssistantPlugin extends Plugin {
 				new Notice("Output may be truncated (hit max tokens). Increase Max Tokens in settings.");
 			}
 
-			const isGenerative = GENERATIVE_MODES.includes(mode);
 			const ensureSameSelection = (): boolean => {
 				if (editor.getRange(selectionStart, selectionEnd) !== selection) {
 					new Notice("Selection changed. Please select the text again.");
@@ -294,9 +293,8 @@ export default class FormatAssistantPlugin extends Plugin {
 				originalText: selection,
 				resultText: result.content,
 				showOriginal: this.settings.previewBeforeReplace,
-				// Generative modes (e.g. wiki candidates, review card) derive new
-				// content, so inserting is the safe default; reformatting modes replace.
-				primaryAction: isGenerative ? "insert" : "replace",
+				// Reformatting modes default to Replace; Insert below is offered too.
+				primaryAction: "replace",
 				onReplace: () => {
 					if (!ensureSameSelection()) {
 						return;

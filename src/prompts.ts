@@ -2,10 +2,6 @@ export type FormatMode =
 	| "obsidian-markdown"
 	| "note-organize"
 	| "diary-organize"
-	| "course-note"
-	| "review-card"
-	| "wiki-candidates"
-	| "concise"
 	| "custom";
 
 export interface FormatTask {
@@ -114,15 +110,6 @@ export const DIARY_ORGANIZE_PROMPT = `你正在执行“日记整理模式”。
 - 下午：
   - [ ] 写大物报告`;
 
-const REVIEW_CARD_PROMPT =
-	"压缩为复习卡片：\n将内容压缩成高密度复习版。优先保留结论、公式、条件、关键词、易错点和最短必要解释。尽量短、准、可扫读，但不要遗漏原文关键逻辑，不要编造内容。";
-
-const WIKI_CANDIDATES_PROMPT =
-	"提取 Wiki 候选条目：\n从内容中提取适合单独沉淀为 Wiki 的概念、公式、方法、定理、模型或实验术语。输出时按条目列出，每个条目只保留最小必要定义、用途或区分点。不要自动创建链接，不要扩写成完整文章。";
-
-const CONCISE_PROMPT =
-	"请将输入文本精简为更短、更清楚的 Markdown，不丢失核心公式、适用条件、定义、限制和关键结论。";
-
 export interface ModeRuntime {
 	maxTokens?: number;
 	timeoutSeconds?: number;
@@ -131,9 +118,8 @@ export interface ModeRuntime {
 // Per-mode overrides for token budget and request timeout.
 // Modes not listed here fall back to the global settings values.
 export const MODE_RUNTIME: Partial<Record<FormatMode, ModeRuntime>> = {
-	// note/course produce longer structured output -> larger budget, longer wait.
+	// note-organize produces longer structured output -> larger budget, longer wait.
 	"note-organize": { maxTokens: 2000, timeoutSeconds: 60 },
-	"course-note": { maxTokens: 2000, timeoutSeconds: 60 },
 	// diary output is usually shorter and faster.
 	"diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
 };
@@ -149,18 +135,10 @@ export function resolveModeRuntime(
 	};
 }
 
-// Modes that derive NEW content (vs reformatting the input in place). For these,
-// replacing the source selection is usually wrong — inserting is the safe default.
-export const GENERATIVE_MODES: FormatMode[] = ["review-card", "wiki-candidates"];
-
 export const FORMAT_MODES: FormatMode[] = [
 	"obsidian-markdown",
 	"note-organize",
 	"diary-organize",
-	"course-note",
-	"review-card",
-	"wiki-candidates",
-	"concise",
 	"custom"
 ];
 
@@ -168,10 +146,6 @@ export const FORMAT_MODE_LABELS: Record<FormatMode, string> = {
 	"obsidian-markdown": "Obsidian Markdown",
 	"note-organize": "Note Organize",
 	"diary-organize": "Diary Organize",
-	"course-note": "Course Note",
-	"review-card": "Review Card",
-	"wiki-candidates": "Wiki Candidates",
-	concise: "Concise",
 	custom: "Custom Instruction"
 };
 
@@ -190,26 +164,6 @@ export const FORMAT_TASKS: FormatTask[] = [
 		id: "organize-selection-as-diary",
 		name: "Organize selection as diary",
 		mode: "diary-organize"
-	},
-	{
-		id: "format-selection-as-course-note",
-		name: "Format selection as course note",
-		mode: "course-note"
-	},
-	{
-		id: "compress-selection-into-review-card",
-		name: "Compress selection into review card",
-		mode: "review-card"
-	},
-	{
-		id: "generate-wiki-candidates",
-		name: "Generate Wiki candidates",
-		mode: "wiki-candidates"
-	},
-	{
-		id: "make-selection-concise",
-		name: "Make selection concise",
-		mode: "concise"
 	}
 ];
 
@@ -247,25 +201,12 @@ export function buildModePrompt(mode: FormatMode): string {
 		return OBSIDIAN_MARKDOWN_PROMPT;
 	}
 
-	// course-note now follows the newer structured note-organize prompt.
-	if (mode === "note-organize" || mode === "course-note") {
+	if (mode === "note-organize") {
 		return NOTE_ORGANIZE_PROMPT;
 	}
 
 	if (mode === "diary-organize") {
 		return DIARY_ORGANIZE_PROMPT;
-	}
-
-	if (mode === "review-card") {
-		return REVIEW_CARD_PROMPT;
-	}
-
-	if (mode === "wiki-candidates") {
-		return WIKI_CANDIDATES_PROMPT;
-	}
-
-	if (mode === "concise") {
-		return CONCISE_PROMPT;
 	}
 
 	return "你正在执行“自定义指令模式”。请按用户临时 instruction 处理输入文本，但仍必须遵守 system message 中的通用规则。";

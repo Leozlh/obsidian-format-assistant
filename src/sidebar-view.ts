@@ -349,7 +349,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.customInputEl = panel.createEl("textarea", {
 			cls: "format-assistant-textarea",
 			attr: {
-				placeholder: "Add temporary instructions, for example: keep it concise, preserve the original tone, or organize it as a clearer course note."
+				placeholder: "Add temporary instructions, for example: keep it concise, or preserve the original tone."
 			}
 		});
 		this.customInputEl.value = this.customInstruction;
@@ -551,9 +551,17 @@ export class FormatAssistantSidebarView extends ItemView {
 			return;
 		}
 
-		parent.createEl("pre", {
-			cls: "format-assistant-output",
-			text: this.outputText
+		// Editable result: tweaks here flow into Copy / Replace / Insert.
+		const resultEl = parent.createEl("textarea", {
+			cls: "format-assistant-output format-assistant-output-editable"
+		});
+		resultEl.value = this.outputText;
+		resultEl.addEventListener("input", () => {
+			this.outputText = resultEl.value;
+		});
+		parent.createDiv({
+			cls: "format-assistant-muted format-assistant-hint",
+			text: "You can edit the result above before Copy / Replace / Insert."
 		});
 	}
 

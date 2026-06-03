@@ -296,6 +296,13 @@
 	min-height: 54px;
 }
 
+.format-assistant-output-editable {
+	width: 100%;
+	min-height: 120px;
+	max-height: 40vh;
+	resize: vertical;
+}
+
 .format-assistant-result-buttons {
 	display: grid;
 	grid-template-columns: 1fr 1fr;

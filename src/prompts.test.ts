@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildModePrompt, GENERATIVE_MODES, resolveModeRuntime } from "./prompts";
+import { buildModePrompt, FORMAT_MODES, resolveModeRuntime } from "./prompts";
 
 describe("buildModePrompt", () => {
-	it("course-note now reuses the structured note-organize prompt", () => {
-		expect(buildModePrompt("course-note")).toBe(buildModePrompt("note-organize"));
-	});
-
 	it("note-organize keeps the structured heading template", () => {
 		const prompt = buildModePrompt("note-organize");
 		expect(prompt).toContain("## 核心内容");
@@ -30,18 +26,22 @@ describe("buildModePrompt", () => {
 	});
 });
 
+describe("FORMAT_MODES", () => {
+	it("only contains the three core modes plus custom", () => {
+		expect(FORMAT_MODES).toEqual([
+			"obsidian-markdown",
+			"note-organize",
+			"diary-organize",
+			"custom"
+		]);
+	});
+});
+
 describe("resolveModeRuntime", () => {
 	const settings = { maxTokens: 1200, timeoutSeconds: 30 };
 
 	it("gives note-organize a larger budget and longer timeout", () => {
 		expect(resolveModeRuntime("note-organize", settings)).toEqual({
-			maxTokens: 2000,
-			timeoutSeconds: 60
-		});
-	});
-
-	it("applies the same override to course-note", () => {
-		expect(resolveModeRuntime("course-note", settings)).toEqual({
 			maxTokens: 2000,
 			timeoutSeconds: 60
 		});
@@ -63,16 +63,5 @@ describe("resolveModeRuntime", () => {
 			maxTokens: 1200,
 			timeoutSeconds: 30
 		});
-	});
-});
-
-describe("GENERATIVE_MODES", () => {
-	it("marks derived-content modes so they don't default to Replace", () => {
-		expect(GENERATIVE_MODES).toContain("wiki-candidates");
-		expect(GENERATIVE_MODES).toContain("review-card");
-		// reformatting modes must NOT be generative (Replace is fine for them)
-		expect(GENERATIVE_MODES).not.toContain("obsidian-markdown");
-		expect(GENERATIVE_MODES).not.toContain("diary-organize");
-		expect(GENERATIVE_MODES).not.toContain("concise");
 	});
 });
