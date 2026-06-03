@@ -99,7 +99,7 @@ export class SelectionService {
 		};
 	}
 
-	captureCurrentContext(): CaptureResult {
+	captureCurrentContext(allowNoteFallback: boolean): CaptureResult {
 		const info = this.getActiveMarkdownInfo();
 		if (!info?.editor) {
 			return {
@@ -113,6 +113,13 @@ export class SelectionService {
 			return {
 				input: selection,
 				error: null
+			};
+		}
+
+		if (!allowNoteFallback) {
+			return {
+				input: null,
+				error: "No selection captured. Enable current note fallback in settings, or paste text into Manual Input."
 			};
 		}
 

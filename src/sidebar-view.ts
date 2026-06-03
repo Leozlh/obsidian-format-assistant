@@ -111,7 +111,9 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!this.currentContext) {
 			this.statusText = selection.trim()
 				? `Active file: ${activeName}. Current editor has a selection.`
-				: `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
+				: this.plugin.settings.includeFullCurrentNote
+					? `Active file: ${activeName}. Current note fallback is enabled.`
+					: `Active file: ${activeName}. Select text or paste into Manual Input.`;
 		}
 
 		this.refreshContextPreview();
@@ -519,7 +521,9 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!this.outputText) {
 			parent.createDiv({
 				cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
-				text: "No result yet. Click Generate to process manual input, captured selection, or current note fallback."
+				text: this.plugin.settings.includeFullCurrentNote
+					? "No result yet. Click Generate to process manual input, captured selection, or current note fallback."
+					: "No result yet. Click Generate to process manual input or captured selection."
 			});
 			return;
 		}
@@ -539,7 +543,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 		panel.createDiv({
 			cls: "format-assistant-warning",
-			text: "Full-note setting is on. This plugin only uses the active note as fallback and never scans the vault."
+			text: "Current note fallback is on. With no selection, Generate may send the active note body only. The vault is never scanned."
 		});
 	}
 
@@ -681,7 +685,9 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private captureCurrentSelection(showNotice: boolean): boolean {
-		const result = this.plugin.selectionService.captureCurrentContext();
+		const result = this.plugin.selectionService.captureCurrentContext(
+			this.plugin.settings.includeFullCurrentNote
+		);
 		if (!result.input) {
 			this.currentContext = null;
 			const message = result.error ?? "Select text first or open a note with body text.";

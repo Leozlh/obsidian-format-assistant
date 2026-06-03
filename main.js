@@ -636,12 +636,12 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Include full current note").setDesc("When enabled, show a reminder that only the active note can be used as fallback. The plugin never scans the vault.").addToggle(
+    new import_obsidian2.Setting(containerEl).setName("Allow current note fallback").setDesc("When enabled, Generate may use the active note body if no text is selected. The plugin never scans the vault.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.includeFullCurrentNote).onChange(async (value) => {
         this.plugin.settings.includeFullCurrentNote = value;
         await this.plugin.saveSettings();
         if (value) {
-          new import_obsidian2.Notice("Current note fallback only uses the active note. The vault is never scanned.");
+          new import_obsidian2.Notice("Current note fallback enabled. Only the active note can be used; the vault is never scanned.");
         }
       })
     );
@@ -804,7 +804,7 @@ var SelectionService = class {
       to: editor.getCursor("to")
     };
   }
-  captureCurrentContext() {
+  captureCurrentContext(allowNoteFallback) {
     var _a, _b, _c, _d;
     const info = this.getActiveMarkdownInfo();
     if (!(info == null ? void 0 : info.editor)) {
@@ -818,6 +818,12 @@ var SelectionService = class {
       return {
         input: selection,
         error: null
+      };
+    }
+    if (!allowNoteFallback) {
+      return {
+        input: null,
+        error: "No selection captured. Enable current note fallback in settings, or paste text into Manual Input."
       };
     }
     const noteText = cleanCurrentNoteBody(info.editor.getValue());
@@ -977,7 +983,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     const selection = (_b = (_a = info == null ? void 0 : info.editor) == null ? void 0 : _a.getSelection()) != null ? _b : "";
     const activeName = (_f = (_e = (_c = this.currentContext) == null ? void 0 : _c.fileName) != null ? _e : (_d = info == null ? void 0 : info.file) == null ? void 0 : _d.basename) != null ? _f : "No active Markdown file";
     if (!this.currentContext) {
-      this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : `Active file: ${activeName}. Ready to use the current note body if no selection is captured.`;
+      this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : this.plugin.settings.includeFullCurrentNote ? `Active file: ${activeName}. Current note fallback is enabled.` : `Active file: ${activeName}. Select text or paste into Manual Input.`;
     }
     this.refreshContextPreview();
   }
@@ -1325,7 +1331,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     if (!this.outputText) {
       parent.createDiv({
         cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
-        text: "No result yet. Click Generate to process manual input, captured selection, or current note fallback."
+        text: this.plugin.settings.includeFullCurrentNote ? "No result yet. Click Generate to process manual input, captured selection, or current note fallback." : "No result yet. Click Generate to process manual input or captured selection."
       });
       return;
     }
@@ -1341,7 +1347,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     const panel = root.createDiv({ cls: "format-assistant-status" });
     panel.createDiv({
       cls: "format-assistant-warning",
-      text: "Full-note setting is on. This plugin only uses the active note as fallback and never scans the vault."
+      text: "Current note fallback is on. With no selection, Generate may send the active note body only. The vault is never scanned."
     });
   }
   async generate() {
@@ -1468,7 +1474,9 @@ ${this.outputText}`,
   }
   captureCurrentSelection(showNotice) {
     var _a;
-    const result = this.plugin.selectionService.captureCurrentContext();
+    const result = this.plugin.selectionService.captureCurrentContext(
+      this.plugin.settings.includeFullCurrentNote
+    );
     if (!result.input) {
       this.currentContext = null;
       const message = (_a = result.error) != null ? _a : "Select text first or open a note with body text.";

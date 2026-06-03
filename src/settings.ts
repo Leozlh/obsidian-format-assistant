@@ -180,8 +180,8 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Include full current note")
-			.setDesc("When enabled, show a reminder that only the active note can be used as fallback. The plugin never scans the vault.")
+			.setName("Allow current note fallback")
+			.setDesc("When enabled, Generate may use the active note body if no text is selected. The plugin never scans the vault.")
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.includeFullCurrentNote)
@@ -189,7 +189,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						this.plugin.settings.includeFullCurrentNote = value;
 						await this.plugin.saveSettings();
 						if (value) {
-							new Notice("Current note fallback only uses the active note. The vault is never scanned.");
+							new Notice("Current note fallback enabled. Only the active note can be used; the vault is never scanned.");
 						}
 					})
 			);
