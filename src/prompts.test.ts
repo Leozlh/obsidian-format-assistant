@@ -17,11 +17,14 @@ describe("buildModePrompt", () => {
 		expect(buildModePrompt("obsidian-markdown")).not.toContain("## 核心内容");
 	});
 
-	it("diary-organize preserves the timeline and completion status", () => {
+	it("diary-organize preserves timeline, judges tasks, and tracks status", () => {
 		const prompt = buildModePrompt("diary-organize");
 		expect(prompt).toContain("日记整理模式");
 		expect(prompt).toContain("时间顺序");
 		expect(prompt).toContain("- [x]");
+		// task vs life-record judgment + default-to-todo for unmarked tasks
+		expect(prompt).toContain("生活记录");
+		expect(prompt).toContain("默认 - [ ]");
 		expect(prompt).not.toContain("## 待办");
 	});
 });
