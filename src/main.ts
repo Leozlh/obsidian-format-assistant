@@ -6,7 +6,12 @@ import {
 	Plugin,
 	WorkspaceLeaf
 } from "obsidian";
-import { applyApiProfile, type ApiProfile } from "./api-profiles";
+import {
+	applyApiProfile,
+	applyApiSettingsSnapshot,
+	createApiSettingsSnapshot,
+	type ApiProfile
+} from "./api-profiles";
 import { callChatCompletions, type ChatResult } from "./api";
 import { FORMAT_TASKS, type FormatMode } from "./prompts";
 import { PreviewModal } from "./preview-modal";
@@ -119,10 +124,16 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	async saveSettings() {
+		if (!this.settings.activeApiProfileId) {
+			this.settings.manualApiSettings = createApiSettingsSnapshot(this.settings);
+		}
 		await this.saveData({ ...this.settings, apiKey: "" });
 	}
 
 	async applyApiProfile(profile: ApiProfile): Promise<void> {
+		if (!this.settings.activeApiProfileId) {
+			this.settings.manualApiSettings = createApiSettingsSnapshot(this.settings);
+		}
 		applyApiProfile(this.settings, profile);
 		this.settings.apiKey = profile.apiKeyRef
 			? this.app.secretStorage.getSecret(profile.apiKeyRef) ?? ""
@@ -133,11 +144,52 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	async setApiKey(value: string): Promise<void> {
-		const ref = this.settings.apiKeyRef || `${this.manifest.id}-current-api-key`;
+		this.detachFromApiProfile();
+		const ref = `${this.manifest.id}-current-api-key`;
 		this.app.secretStorage.setSecret(ref, value);
 		this.settings.apiKeyRef = ref;
 		this.settings.apiKey = value;
 		await this.saveSettings();
+	}
+
+	detachFromApiProfile(): void {
+		if (!this.settings.activeApiProfileId) {
+			return;
+		}
+		const ref = `${this.manifest.id}-current-api-key`;
+		this.app.secretStorage.setSecret(ref, this.settings.apiKey);
+		this.settings.apiKeyRef = ref;
+		this.settings.activeApiProfileId = "";
+		this.settings.manualApiSettings = createApiSettingsSnapshot(this.settings);
+	}
+
+	async applyManualApiSettings(): Promise<void> {
+		if (this.settings.manualApiSettings) {
+			applyApiSettingsSnapshot(this.settings, this.settings.manualApiSettings);
+			this.settings.apiKey = this.settings.apiKeyRef
+				? this.app.secretStorage.getSecret(this.settings.apiKeyRef) ?? ""
+				: "";
+		}
+		this.settings.activeApiProfileId = "";
+		await this.saveSettings();
+		this.refreshSidebarViews();
+		new Notice("Using manual API settings.");
+	}
+
+	async removeApiProfile(id: string): Promise<void> {
+		const profile = this.settings.apiProfiles.find((item) => item.id === id);
+		if (!profile) {
+			return;
+		}
+		if (this.settings.activeApiProfileId === id) {
+			this.detachFromApiProfile();
+		}
+		if (profile.apiKeyRef) {
+			this.app.secretStorage.setSecret(profile.apiKeyRef, "");
+		}
+		this.settings.apiProfiles = this.settings.apiProfiles.filter((item) => item.id !== id);
+		await this.saveSettings();
+		this.refreshSidebarViews();
 	}
 
 	async secureApiProfile(profile: ApiProfile): Promise<void> {
@@ -147,6 +199,7 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	private async migrateSecrets(data: unknown): Promise<unknown> {
+		const before = JSON.stringify(data ?? {});
 		const raw = data && typeof data === "object" ? structuredClone(data) as Record<string, unknown> : {};
 		const legacyKey = typeof raw.apiKey === "string" ? raw.apiKey : "";
 		let currentRef = typeof raw.apiKeyRef === "string" ? raw.apiKeyRef : "";
@@ -175,7 +228,9 @@ export default class FormatAssistantPlugin extends Plugin {
 				return profile;
 			});
 		}
-		await this.saveData(raw);
+		if (JSON.stringify(raw) !== before) {
+			await this.saveData(raw);
+		}
 		return raw;
 	}
 

@@ -43,6 +43,10 @@ Open the plugin settings and fill in:
 - **Model** — e.g. `gpt-4o-mini`
 - **Max Tokens** / **Temperature** / **Timeout seconds**
 - **Provider Type**: `OpenAI-compatible`
+
+Saved API profiles keep independent SecretStorage references. Editing a selected
+profile detaches into manual settings, and switching back to manual restores the
+last manual configuration.
 - **System Prompt** (with *Reset to default*)
 - **Omit temperature** / **Use max_completion_tokens** — compatibility toggles for stricter providers (e.g. OpenAI o-series)
 - Behaviour toggles: *Preview before replace*, *Auto use selection on sidebar open*, *Include current file name in prompt*, *Allow current note fallback*

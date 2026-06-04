@@ -809,10 +809,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private async switchApiProfile(profileId: string): Promise<void> {
 		if (!profileId) {
-			this.plugin.settings.activeApiProfileId = "";
-			await this.plugin.saveSettings();
-			this.plugin.refreshSidebarViews();
-			new Notice("Using manual API settings.");
+			await this.plugin.applyManualApiSettings();
 			return;
 		}
 

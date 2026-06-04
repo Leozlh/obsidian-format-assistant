@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	applyApiProfile,
+	applyApiSettingsSnapshot,
 	createApiProfileFromSettings,
+	createApiSettingsSnapshot,
 	normalizeApiProfiles
 } from "./api-profiles";
 import { DEFAULT_SETTINGS } from "./settings-types";
@@ -33,5 +35,21 @@ describe("API profiles", () => {
 
 	it("rejects legacy or malformed profiles containing no secret reference", () => {
 		expect(normalizeApiProfiles([{ id: "legacy", apiKey: "plaintext" }])).toEqual([]);
+	});
+
+	it("captures and restores independent manual API settings", () => {
+		const manual = createApiSettingsSnapshot({
+			...DEFAULT_SETTINGS,
+			apiKeyRef: "manual-key",
+			model: "manual-model"
+		});
+		const target = {
+			...structuredClone(DEFAULT_SETTINGS),
+			apiKeyRef: "profile-key",
+			model: "profile-model"
+		};
+		applyApiSettingsSnapshot(target, manual);
+		expect(target.apiKeyRef).toBe("manual-key");
+		expect(target.model).toBe("manual-model");
 	});
 });

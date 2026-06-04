@@ -1,6 +1,8 @@
 import {
 	normalizeApiProfiles,
-	type ApiProfile
+	normalizeApiSettingsSnapshot,
+	type ApiProfile,
+	type ApiSettingsSnapshot
 } from "./api-profiles";
 import { BASE_SYSTEM_PROMPT, type FormatMode } from "./prompts";
 
@@ -48,6 +50,7 @@ export interface FormatAssistantSettings {
 	recentInstructions: string[];
 	apiProfiles: ApiProfile[];
 	activeApiProfileId: string;
+	manualApiSettings: ApiSettingsSnapshot | null;
 }
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -132,7 +135,8 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	includeFullCurrentNote: false,
 	recentInstructions: [],
 	apiProfiles: [],
-	activeApiProfileId: ""
+	activeApiProfileId: "",
+	manualApiSettings: null
 };
 
 export function normalizeSettings(data: unknown): FormatAssistantSettings {
@@ -148,7 +152,8 @@ export function normalizeSettings(data: unknown): FormatAssistantSettings {
 		apiProfiles: normalizeApiProfiles(raw.apiProfiles),
 		activeApiProfileId: typeof raw.activeApiProfileId === "string"
 			? raw.activeApiProfileId
-			: ""
+			: "",
+		manualApiSettings: normalizeApiSettingsSnapshot(raw.manualApiSettings)
 	};
 }
 

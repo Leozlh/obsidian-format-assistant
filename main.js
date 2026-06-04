@@ -31,6 +31,11 @@ function createApiProfileFromSettings(settings, name) {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: toProfileName(name, settings),
+    ...createApiSettingsSnapshot(settings)
+  };
+}
+function createApiSettingsSnapshot(settings) {
+  return {
     baseUrl: settings.baseUrl,
     apiKeyRef: settings.apiKeyRef,
     model: settings.model,
@@ -53,7 +58,18 @@ function normalizeApiProfiles(value) {
     );
   }).slice(0, MAX_API_PROFILES);
 }
+function normalizeApiSettingsSnapshot(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const item = value;
+  return typeof item.baseUrl === "string" && typeof item.apiKeyRef === "string" && typeof item.model === "string" && typeof item.maxTokens === "number" && typeof item.temperature === "number" && item.providerType === "openai-compatible" && typeof item.timeoutSeconds === "number" && typeof item.omitTemperature === "boolean" && typeof item.useMaxCompletionTokens === "boolean" && typeof item.modeRuntime === "object" && item.modeRuntime !== null ? item : null;
+}
 function applyApiProfile(settings, profile) {
+  applyApiSettingsSnapshot(settings, profile);
+  settings.activeApiProfileId = profile.id;
+}
+function applyApiSettingsSnapshot(settings, profile) {
   settings.baseUrl = profile.baseUrl;
   settings.apiKeyRef = profile.apiKeyRef;
   settings.model = profile.model;
@@ -64,7 +80,6 @@ function applyApiProfile(settings, profile) {
   settings.omitTemperature = profile.omitTemperature;
   settings.useMaxCompletionTokens = profile.useMaxCompletionTokens;
   settings.modeRuntime = structuredClone(profile.modeRuntime);
-  settings.activeApiProfileId = profile.id;
 }
 function toProfileName(name, settings) {
   const normalized = name.trim();
@@ -542,7 +557,8 @@ var DEFAULT_SETTINGS = {
   includeFullCurrentNote: false,
   recentInstructions: [],
   apiProfiles: [],
-  activeApiProfileId: ""
+  activeApiProfileId: "",
+  manualApiSettings: null
 };
 function normalizeSettings(data) {
   const raw = typeof data === "object" && data !== null ? data : {};
@@ -552,7 +568,8 @@ function normalizeSettings(data) {
     modeRuntime: normalizeModeRuntime(raw.modeRuntime),
     recentInstructions: normalizeRecentInstructions(raw.recentInstructions),
     apiProfiles: normalizeApiProfiles(raw.apiProfiles),
-    activeApiProfileId: typeof raw.activeApiProfileId === "string" ? raw.activeApiProfileId : ""
+    activeApiProfileId: typeof raw.activeApiProfileId === "string" ? raw.activeApiProfileId : "",
+    manualApiSettings: normalizeApiSettingsSnapshot(raw.manualApiSettings)
   };
 }
 function validateApiSettings(settings) {
@@ -591,6 +608,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     this.displayApiProfiles(containerEl);
     new import_obsidian2.Setting(containerEl).setName("API Base URL").setDesc("OpenAI-compatible API base URL, without /chat/completions.").addText(
       (text) => text.setPlaceholder("https://api.openai.com/v1").setValue(this.plugin.settings.baseUrl).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.baseUrl = value.trim();
         await this.plugin.saveSettings();
       })
@@ -603,6 +621,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     });
     new import_obsidian2.Setting(containerEl).setName("Model").setDesc("Example: gpt-4o-mini.").addText(
       (text) => text.setPlaceholder("gpt-4o-mini").setValue(this.plugin.settings.model).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.model = value.trim();
         await this.plugin.saveSettings();
         this.plugin.refreshSidebarViews();
@@ -610,30 +629,35 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     );
     new import_obsidian2.Setting(containerEl).setName("Max Tokens").addText(
       (text) => text.setPlaceholder("1200").setValue(String(this.plugin.settings.maxTokens)).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.maxTokens = this.toNumber(value, 1200, 1);
         await this.plugin.saveSettings();
       })
     );
     new import_obsidian2.Setting(containerEl).setName("Temperature").addSlider(
       (slider) => slider.setLimits(0, 2, 0.1).setDynamicTooltip().setValue(this.plugin.settings.temperature).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.temperature = value;
         await this.plugin.saveSettings();
       })
     );
     new import_obsidian2.Setting(containerEl).setName("Provider Type").addDropdown(
       (dropdown) => dropdown.addOption("openai-compatible", "OpenAI-compatible").setValue(this.plugin.settings.providerType).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.providerType = value;
         await this.plugin.saveSettings();
       })
     );
     new import_obsidian2.Setting(containerEl).setName("Omit temperature").setDesc("Enable for models that reject a custom temperature (e.g. OpenAI o-series).").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.omitTemperature).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.omitTemperature = value;
         await this.plugin.saveSettings();
       })
     );
     new import_obsidian2.Setting(containerEl).setName("Use max_completion_tokens").setDesc("Send max_completion_tokens instead of max_tokens. Enable for models that require it (e.g. OpenAI o-series).").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.useMaxCompletionTokens).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.useMaxCompletionTokens = value;
         await this.plugin.saveSettings();
       })
@@ -667,6 +691,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     );
     new import_obsidian2.Setting(containerEl).setName("Timeout seconds").setDesc("Global default. Used by modes without a per-mode override below.").addText(
       (text) => text.setPlaceholder("30").setValue(String(this.plugin.settings.timeoutSeconds)).onChange(async (value) => {
+        this.plugin.detachFromApiProfile();
         this.plugin.settings.timeoutSeconds = this.toNumber(value, 30, 1);
         await this.plugin.saveSettings();
       })
@@ -681,11 +706,13 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
       this.plugin.settings.modeRuntime[mode] = limit;
       new import_obsidian2.Setting(containerEl).setName(FORMAT_MODE_LABELS[mode]).setDesc("Max Tokens \xB7 Timeout (s)").addText(
         (text) => text.setPlaceholder("max tokens").setValue(String(limit.maxTokens)).onChange(async (value) => {
+          this.plugin.detachFromApiProfile();
           limit.maxTokens = this.toNumber(value, limit.maxTokens, 1);
           await this.plugin.saveSettings();
         })
       ).addText(
         (text) => text.setPlaceholder("timeout s").setValue(String(limit.timeoutSeconds)).onChange(async (value) => {
+          this.plugin.detachFromApiProfile();
           limit.timeoutSeconds = this.toNumber(value, limit.timeoutSeconds, 1);
           await this.plugin.saveSettings();
         })
@@ -734,16 +761,14 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
   }
   displayApiProfiles(containerEl) {
     containerEl.createEl("h3", { text: "API Profiles" });
-    new import_obsidian2.Setting(containerEl).setName("Active API profile").setDesc("Switch between saved API settings. API keys are stored in Obsidian plugin data with the profile settings and never logged.").addDropdown((dropdown) => {
+    new import_obsidian2.Setting(containerEl).setName("Active API profile").setDesc("Switch between saved API settings. API keys are stored in Obsidian SecretStorage.").addDropdown((dropdown) => {
       dropdown.addOption("", "Manual current settings");
       for (const profile of this.plugin.settings.apiProfiles) {
         dropdown.addOption(profile.id, profile.name);
       }
       dropdown.setValue(this.plugin.settings.activeApiProfileId).onChange(async (value) => {
         if (!value) {
-          this.plugin.settings.activeApiProfileId = "";
-          await this.plugin.saveSettings();
-          this.plugin.refreshSidebarViews();
+          await this.plugin.applyManualApiSettings();
           return;
         }
         const profile = this.plugin.settings.apiProfiles.find((item) => item.id === value);
@@ -755,7 +780,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         this.display();
       });
     });
-    new import_obsidian2.Setting(containerEl).setName("Save current API settings").setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles. API keys are stored in Obsidian plugin data with the profile settings.`).addText((text) => {
+    new import_obsidian2.Setting(containerEl).setName("Save current API settings").setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles. API keys are stored in Obsidian SecretStorage.`).addText((text) => {
       text.setPlaceholder("Profile name");
       text.inputEl.addClass("format-assistant-profile-name-input");
     }).addButton(
@@ -791,12 +816,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         if (!id) {
           return;
         }
-        this.plugin.settings.apiProfiles = this.plugin.settings.apiProfiles.filter(
-          (profile) => profile.id !== id
-        );
-        this.plugin.settings.activeApiProfileId = "";
-        await this.plugin.saveSettings();
-        this.plugin.refreshSidebarViews();
+        await this.plugin.removeApiProfile(id);
         new import_obsidian2.Notice("API profile removed.");
         this.display();
       })
@@ -1708,10 +1728,7 @@ ${this.outputText}`,
   }
   async switchApiProfile(profileId) {
     if (!profileId) {
-      this.plugin.settings.activeApiProfileId = "";
-      await this.plugin.saveSettings();
-      this.plugin.refreshSidebarViews();
-      new import_obsidian4.Notice("Using manual API settings.");
+      await this.plugin.applyManualApiSettings();
       return;
     }
     const profile = this.plugin.settings.apiProfiles.find((item) => item.id === profileId);
@@ -1805,10 +1822,16 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
     this.settings.apiKey = this.settings.apiKeyRef ? (_a = this.app.secretStorage.getSecret(this.settings.apiKeyRef)) != null ? _a : "" : "";
   }
   async saveSettings() {
+    if (!this.settings.activeApiProfileId) {
+      this.settings.manualApiSettings = createApiSettingsSnapshot(this.settings);
+    }
     await this.saveData({ ...this.settings, apiKey: "" });
   }
   async applyApiProfile(profile) {
     var _a;
+    if (!this.settings.activeApiProfileId) {
+      this.settings.manualApiSettings = createApiSettingsSnapshot(this.settings);
+    }
     applyApiProfile(this.settings, profile);
     this.settings.apiKey = profile.apiKeyRef ? (_a = this.app.secretStorage.getSecret(profile.apiKeyRef)) != null ? _a : "" : "";
     await this.saveSettings();
@@ -1816,11 +1839,48 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
     new import_obsidian5.Notice(`API profile switched: ${profile.name}`);
   }
   async setApiKey(value) {
-    const ref = this.settings.apiKeyRef || `${this.manifest.id}-current-api-key`;
+    this.detachFromApiProfile();
+    const ref = `${this.manifest.id}-current-api-key`;
     this.app.secretStorage.setSecret(ref, value);
     this.settings.apiKeyRef = ref;
     this.settings.apiKey = value;
     await this.saveSettings();
+  }
+  detachFromApiProfile() {
+    if (!this.settings.activeApiProfileId) {
+      return;
+    }
+    const ref = `${this.manifest.id}-current-api-key`;
+    this.app.secretStorage.setSecret(ref, this.settings.apiKey);
+    this.settings.apiKeyRef = ref;
+    this.settings.activeApiProfileId = "";
+    this.settings.manualApiSettings = createApiSettingsSnapshot(this.settings);
+  }
+  async applyManualApiSettings() {
+    var _a;
+    if (this.settings.manualApiSettings) {
+      applyApiSettingsSnapshot(this.settings, this.settings.manualApiSettings);
+      this.settings.apiKey = this.settings.apiKeyRef ? (_a = this.app.secretStorage.getSecret(this.settings.apiKeyRef)) != null ? _a : "" : "";
+    }
+    this.settings.activeApiProfileId = "";
+    await this.saveSettings();
+    this.refreshSidebarViews();
+    new import_obsidian5.Notice("Using manual API settings.");
+  }
+  async removeApiProfile(id) {
+    const profile = this.settings.apiProfiles.find((item) => item.id === id);
+    if (!profile) {
+      return;
+    }
+    if (this.settings.activeApiProfileId === id) {
+      this.detachFromApiProfile();
+    }
+    if (profile.apiKeyRef) {
+      this.app.secretStorage.setSecret(profile.apiKeyRef, "");
+    }
+    this.settings.apiProfiles = this.settings.apiProfiles.filter((item) => item.id !== id);
+    await this.saveSettings();
+    this.refreshSidebarViews();
   }
   async secureApiProfile(profile) {
     const ref = `${this.manifest.id}-profile-${profile.id}`;
@@ -1828,6 +1888,7 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
     profile.apiKeyRef = ref;
   }
   async migrateSecrets(data) {
+    const before = JSON.stringify(data != null ? data : {});
     const raw = data && typeof data === "object" ? structuredClone(data) : {};
     const legacyKey = typeof raw.apiKey === "string" ? raw.apiKey : "";
     let currentRef = typeof raw.apiKeyRef === "string" ? raw.apiKeyRef : "";
@@ -1857,7 +1918,9 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
         return profile;
       });
     }
-    await this.saveData(raw);
+    if (JSON.stringify(raw) !== before) {
+      await this.saveData(raw);
+    }
     return raw;
   }
   async openSidebar() {

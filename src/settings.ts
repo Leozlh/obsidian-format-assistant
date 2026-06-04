@@ -34,6 +34,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.setPlaceholder("https://api.openai.com/v1")
 					.setValue(this.plugin.settings.baseUrl)
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.baseUrl = value.trim();
 						await this.plugin.saveSettings();
 					})
@@ -44,11 +45,11 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 			.setDesc("Stored in Obsidian SecretStorage. The plugin never logs this value.")
 			.addText((text) => {
 				text.inputEl.type = "password";
-					text
-						.setPlaceholder("sk-...")
-						.setValue(this.plugin.settings.apiKey)
-						.onChange(async (value) => {
-							await this.plugin.setApiKey(value);
+				text
+					.setPlaceholder("sk-...")
+					.setValue(this.plugin.settings.apiKey)
+					.onChange(async (value) => {
+						await this.plugin.setApiKey(value);
 					});
 			});
 
@@ -60,6 +61,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.setPlaceholder("gpt-4o-mini")
 					.setValue(this.plugin.settings.model)
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.model = value.trim();
 						await this.plugin.saveSettings();
 						this.plugin.refreshSidebarViews();
@@ -73,6 +75,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.setPlaceholder("1200")
 					.setValue(String(this.plugin.settings.maxTokens))
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.maxTokens = this.toNumber(value, 1200, 1);
 						await this.plugin.saveSettings();
 					})
@@ -86,6 +89,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.setValue(this.plugin.settings.temperature)
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.temperature = value;
 						await this.plugin.saveSettings();
 					})
@@ -98,6 +102,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.addOption("openai-compatible", "OpenAI-compatible")
 					.setValue(this.plugin.settings.providerType)
 					.onChange(async (value: ProviderType) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.providerType = value;
 						await this.plugin.saveSettings();
 					})
@@ -110,6 +115,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.settings.omitTemperature)
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.omitTemperature = value;
 						await this.plugin.saveSettings();
 					})
@@ -122,6 +128,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.settings.useMaxCompletionTokens)
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.useMaxCompletionTokens = value;
 						await this.plugin.saveSettings();
 					})
@@ -177,6 +184,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.setPlaceholder("30")
 					.setValue(String(this.plugin.settings.timeoutSeconds))
 					.onChange(async (value) => {
+						this.plugin.detachFromApiProfile();
 						this.plugin.settings.timeoutSeconds = this.toNumber(value, 30, 1);
 						await this.plugin.saveSettings();
 					})
@@ -199,6 +207,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						.setPlaceholder("max tokens")
 						.setValue(String(limit.maxTokens))
 						.onChange(async (value) => {
+							this.plugin.detachFromApiProfile();
 							limit.maxTokens = this.toNumber(value, limit.maxTokens, 1);
 							await this.plugin.saveSettings();
 						})
@@ -208,6 +217,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						.setPlaceholder("timeout s")
 						.setValue(String(limit.timeoutSeconds))
 						.onChange(async (value) => {
+							this.plugin.detachFromApiProfile();
 							limit.timeoutSeconds = this.toNumber(value, limit.timeoutSeconds, 1);
 							await this.plugin.saveSettings();
 						})
@@ -286,7 +296,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Active API profile")
-			.setDesc("Switch between saved API settings. API keys are stored in Obsidian plugin data with the profile settings and never logged.")
+			.setDesc("Switch between saved API settings. API keys are stored in Obsidian SecretStorage.")
 			.addDropdown((dropdown) => {
 				dropdown.addOption("", "Manual current settings");
 				for (const profile of this.plugin.settings.apiProfiles) {
@@ -297,9 +307,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.activeApiProfileId)
 					.onChange(async (value) => {
 						if (!value) {
-							this.plugin.settings.activeApiProfileId = "";
-							await this.plugin.saveSettings();
-							this.plugin.refreshSidebarViews();
+							await this.plugin.applyManualApiSettings();
 							return;
 						}
 
@@ -316,7 +324,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Save current API settings")
-			.setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles. API keys are stored in Obsidian plugin data with the profile settings.`)
+			.setDesc(`${this.plugin.settings.apiProfiles.length}/${MAX_API_PROFILES} saved profiles. API keys are stored in Obsidian SecretStorage.`)
 			.addText((text) => {
 				text.setPlaceholder("Profile name");
 				text.inputEl.addClass("format-assistant-profile-name-input");
@@ -365,12 +373,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 							return;
 						}
 
-						this.plugin.settings.apiProfiles = this.plugin.settings.apiProfiles.filter(
-							(profile) => profile.id !== id
-						);
-						this.plugin.settings.activeApiProfileId = "";
-						await this.plugin.saveSettings();
-						this.plugin.refreshSidebarViews();
+						await this.plugin.removeApiProfile(id);
 						new Notice("API profile removed.");
 						this.display();
 					})

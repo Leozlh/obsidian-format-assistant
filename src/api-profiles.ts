@@ -1,9 +1,7 @@
 import type { FormatAssistantSettings, ModeLimit, ProviderType } from "./settings-types";
 import type { FormatMode } from "./prompts";
 
-export interface ApiProfile {
-	id: string;
-	name: string;
+export interface ApiSettingsSnapshot {
 	baseUrl: string;
 	apiKeyRef: string;
 	model: string;
@@ -16,6 +14,11 @@ export interface ApiProfile {
 	modeRuntime: Partial<Record<FormatMode, ModeLimit>>;
 }
 
+export interface ApiProfile extends ApiSettingsSnapshot {
+	id: string;
+	name: string;
+}
+
 export const MAX_API_PROFILES = 8;
 
 export function createApiProfileFromSettings(
@@ -25,6 +28,12 @@ export function createApiProfileFromSettings(
 	return {
 		id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 		name: toProfileName(name, settings),
+		...createApiSettingsSnapshot(settings)
+	};
+}
+
+export function createApiSettingsSnapshot(settings: FormatAssistantSettings): ApiSettingsSnapshot {
+	return {
 		baseUrl: settings.baseUrl,
 		apiKeyRef: settings.apiKeyRef,
 		model: settings.model,
@@ -64,9 +73,36 @@ export function normalizeApiProfiles(value: unknown): ApiProfile[] {
 		.slice(0, MAX_API_PROFILES);
 }
 
+export function normalizeApiSettingsSnapshot(value: unknown): ApiSettingsSnapshot | null {
+	if (!value || typeof value !== "object") {
+		return null;
+	}
+	const item = value as Partial<ApiSettingsSnapshot>;
+	return typeof item.baseUrl === "string" &&
+		typeof item.apiKeyRef === "string" &&
+		typeof item.model === "string" &&
+		typeof item.maxTokens === "number" &&
+		typeof item.temperature === "number" &&
+		item.providerType === "openai-compatible" &&
+		typeof item.timeoutSeconds === "number" &&
+		typeof item.omitTemperature === "boolean" &&
+		typeof item.useMaxCompletionTokens === "boolean" &&
+		typeof item.modeRuntime === "object" && item.modeRuntime !== null
+		? item as ApiSettingsSnapshot
+		: null;
+}
+
 export function applyApiProfile(
 	settings: FormatAssistantSettings,
 	profile: ApiProfile
+): void {
+	applyApiSettingsSnapshot(settings, profile);
+	settings.activeApiProfileId = profile.id;
+}
+
+export function applyApiSettingsSnapshot(
+	settings: FormatAssistantSettings,
+	profile: ApiSettingsSnapshot
 ): void {
 	settings.baseUrl = profile.baseUrl;
 	settings.apiKeyRef = profile.apiKeyRef;
@@ -78,7 +114,6 @@ export function applyApiProfile(
 	settings.omitTemperature = profile.omitTemperature;
 	settings.useMaxCompletionTokens = profile.useMaxCompletionTokens;
 	settings.modeRuntime = structuredClone(profile.modeRuntime);
-	settings.activeApiProfileId = profile.id;
 }
 
 function toProfileName(name: string, settings: FormatAssistantSettings): string {
