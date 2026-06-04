@@ -303,6 +303,23 @@
 	resize: vertical;
 }
 
+/* Distinguish the editable Input (source) from the editable Result. */
+.format-assistant-input {
+	border-left: 3px solid var(--interactive-accent);
+}
+
+.format-assistant-output-editable {
+	border-left: 3px solid var(--text-accent, var(--interactive-accent));
+}
+
+.format-assistant-checkbox {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	cursor: pointer;
+}
+
 .format-assistant-result-buttons {
 	display: grid;
 	grid-template-columns: 1fr 1fr;

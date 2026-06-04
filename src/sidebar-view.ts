@@ -16,6 +16,7 @@ import {
 	type InputSource,
 	type VerifiedSelectionState
 } from "./selection-service";
+import { pushRecentInstruction } from "./settings-types";
 
 export const FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 
@@ -35,6 +36,8 @@ interface GenerateInput {
 	text: string;
 	source: InputSource;
 	currentFileName?: string;
+	// True when the input box was empty and we auto-pulled a selection / note.
+	autoCaptured?: boolean;
 }
 
 export class FormatAssistantSidebarView extends ItemView {
@@ -224,15 +227,15 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	private renderApiProfileSelector(root: HTMLElement): void {
+		// Nothing to choose with zero profiles — keep the sidebar compact.
+		if (this.plugin.settings.apiProfiles.length === 0) {
+			return;
+		}
+
 		const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-api-profile" });
 		const header = panel.createDiv({ cls: "format-assistant-section-header" });
 		header.createEl("h3", { text: "API" });
-		header.createSpan({
-			cls: "format-assistant-muted",
-			text: this.plugin.settings.apiProfiles.length
-				? "Select profile"
-				: "No profiles"
-		});
+		header.createSpan({ cls: "format-assistant-muted", text: "Select profile" });
 
 		const select = panel.createEl("select", { cls: "format-assistant-select" });
 		select.createEl("option", {
@@ -301,6 +304,17 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.completedMs = null;
 			this.render();
 		});
+
+		// Inline surfacing of the whole-note fallback (also in settings).
+		const fallbackLabel = panel.createEl("label", { cls: "format-assistant-checkbox format-assistant-muted" });
+		const fallbackToggle = fallbackLabel.createEl("input", { attr: { type: "checkbox" } });
+		fallbackToggle.checked = this.plugin.settings.includeFullCurrentNote;
+		fallbackLabel.createSpan({ text: " Use the whole note when nothing is selected" });
+		fallbackToggle.addEventListener("change", async () => {
+			this.plugin.settings.includeFullCurrentNote = fallbackToggle.checked;
+			await this.plugin.saveSettings();
+			this.render();
+		});
 	}
 
 	private renderInputMeta(): void {
@@ -366,6 +380,29 @@ export class FormatAssistantSidebarView extends ItemView {
 		const panel = root.createDiv({ cls: "format-assistant-panel" });
 		panel.createEl("h3", { text: "Instruction" });
 
+		// Lightweight quick-pick of recently used instructions.
+		const recents = this.plugin.settings.recentInstructions;
+		if (recents.length > 0) {
+			const pick = panel.createEl("select", { cls: "format-assistant-select" });
+			pick.createEl("option", { text: "Recent instructions…", value: "" });
+			for (const r of recents) {
+				pick.createEl("option", {
+					text: r.length > 40 ? `${r.slice(0, 40)}…` : r,
+					value: r
+				});
+			}
+			pick.value = "";
+			pick.addEventListener("change", () => {
+				if (pick.value) {
+					this.customInstruction = pick.value;
+					if (this.instructionEl) {
+						this.instructionEl.value = pick.value;
+					}
+				}
+				pick.value = "";
+			});
+		}
+
 		this.instructionEl = panel.createEl("textarea", {
 			cls: "format-assistant-textarea",
 			attr: {
@@ -429,6 +466,14 @@ export class FormatAssistantSidebarView extends ItemView {
 		insertButton.addEventListener("click", () => {
 			this.confirmInsertBelow();
 		});
+
+		const sendToInputButton = resultButtons.createEl("button", {
+			text: "→ Input",
+			cls: "format-assistant-result-secondary"
+		});
+		sendToInputButton.setAttribute("aria-label", "Send result to the Input box for another pass");
+		sendToInputButton.disabled = !canCopy;
+		sendToInputButton.addEventListener("click", () => this.sendResultToInput());
 
 		const cancelButton = resultButtons.createEl("button", {
 			text: "Clear output",
@@ -529,6 +574,20 @@ export class FormatAssistantSidebarView extends ItemView {
 			return;
 		}
 
+		// F1: make implicit auto-capture visible (nothing was in the box).
+		if (input.autoCaptured) {
+			new Notice(`Auto-used ${this.formatInputSource(input.source)} (${input.text.length} chars).`);
+		}
+
+		// F4: remember this instruction for quick re-pick next time.
+		if (this.customInstruction.trim()) {
+			this.plugin.settings.recentInstructions = pushRecentInstruction(
+				this.plugin.settings.recentInstructions,
+				this.customInstruction
+			);
+			void this.plugin.saveSettings();
+		}
+
 		this.loading = true;
 		this.outputText = "";
 		this.errorText = "";
@@ -560,6 +619,25 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.loading = false;
 			this.render();
 		}
+	}
+
+	// F6: move the result into the Input box to run another pass on it.
+	private sendResultToInput(): void {
+		if (!this.outputText) {
+			new Notice("No result to send.");
+			return;
+		}
+		this.inputText = this.outputText;
+		// The result is not a captured selection, so subsequent generation is
+		// manual (Replace / Insert stay gated until a new selection is captured).
+		this.currentContext = null;
+		this.outputText = "";
+		this.errorText = "";
+		this.completedMs = null;
+		this.lastGenerationSource = null;
+		this.statusText = "Result moved to Input for another pass.";
+		this.render();
+		new Notice("Result moved to Input.");
 	}
 
 	private async copyResult(): Promise<void> {
@@ -655,6 +733,7 @@ export class FormatAssistantSidebarView extends ItemView {
 
 	private resolveInputForGenerate(): GenerateInput | null {
 		let text = this.inputText.trim();
+		let autoCaptured = false;
 
 		// Empty box: try to auto-capture a selection (or note body) to fill it.
 		if (!text) {
@@ -662,6 +741,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			if (result.input) {
 				this.adoptCapturedInput(result.input);
 				text = result.input.text.trim();
+				autoCaptured = true;
 			}
 		}
 
@@ -682,7 +762,8 @@ export class FormatAssistantSidebarView extends ItemView {
 			source: isSelection ? this.currentContext!.source : "manual",
 			currentFileName: isSelection
 				? (this.currentContext?.fileName ?? activeFileName)
-				: activeFileName
+				: activeFileName,
+			autoCaptured
 		};
 	}
 

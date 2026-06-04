@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildModePrompt, FORMAT_MODES, resolveModeRuntime } from "./prompts";
-import { normalizeModeRuntime } from "./settings-types";
+import {
+	MAX_RECENT_INSTRUCTIONS,
+	normalizeModeRuntime,
+	normalizeRecentInstructions,
+	pushRecentInstruction
+} from "./settings-types";
 
 describe("buildModePrompt", () => {
 	it("note-organize keeps the structured heading template", () => {
@@ -84,6 +89,32 @@ describe("resolveModeRuntime", () => {
 			maxTokens: 800,
 			timeoutSeconds: 20
 		});
+	});
+});
+
+describe("recent instructions", () => {
+	it("moves a used instruction to the front, de-duped and capped", () => {
+		let list: string[] = [];
+		list = pushRecentInstruction(list, "keep concise");
+		list = pushRecentInstruction(list, "preserve tone");
+		list = pushRecentInstruction(list, "keep concise"); // re-use bubbles to front
+		expect(list).toEqual(["keep concise", "preserve tone"]);
+
+		list = pushRecentInstruction(list, "a");
+		list = pushRecentInstruction(list, "b"); // exceeds cap of 3
+		expect(list).toHaveLength(MAX_RECENT_INSTRUCTIONS);
+		expect(list[0]).toBe("b");
+	});
+
+	it("ignores blank instructions", () => {
+		expect(pushRecentInstruction(["x"], "   ")).toEqual(["x"]);
+	});
+
+	it("normalizes junk, trims, de-dupes, and caps on load", () => {
+		expect(
+			normalizeRecentInstructions(["  a  ", "a", "", 5, "b", "c", "d"])
+		).toEqual(["a", "b", "c"]);
+		expect(normalizeRecentInstructions("nope")).toEqual([]);
 	});
 });
 

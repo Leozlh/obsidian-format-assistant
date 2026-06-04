@@ -16,13 +16,13 @@ The sidebar offers three formatting modes:
 
 1. Open the right-side **Format Assistant** panel (ribbon icon or the *Open Format Assistant sidebar* command).
 2. Pick a **Mode**.
-3. Provide input, in priority order:
-   - **Manual Input** (paste text) — takes priority when non-empty;
-   - the current editor **selection** — click **Use** / **Refresh**, or **Note body** to select the whole note body (skips frontmatter and the leading `# ` heading);
-   - the current note body as a fallback (only if *Allow current note fallback* is enabled).
-4. Optionally add a one-off **Instruction**, or load a saved **Prompt Preset**.
-5. Click **Generate**. The result is **editable** before you act on it.
-6. **Copy**, **Replace selection**, or **Insert below selection**. Replace/Insert require the captured selection to still match (they refuse if the selection or file changed).
+3. Fill the single editable **Input** box:
+   - click **Use selection** to pull the current editor selection in (you can then edit it), or
+   - just type / paste text directly (the manual path), or
+   - leave it empty and tick **Use the whole note when nothing is selected** so Generate falls back to the note body (skips frontmatter and the leading `# ` heading).
+4. Optionally add a one-off **Instruction** (recently used ones are offered in a quick-pick).
+5. Click **Generate** (or press **Cmd/Ctrl+Enter** in the Input box). The result is **editable** before you act on it.
+6. **Copy**, **Replace selection**, **Insert below selection**, or **→ Input** (move the result back into the Input box for another pass). Replace / Insert are available only when the Input still equals an **unedited captured selection**, and refuse if that selection or its file changed.
 
 ## Commands (palette)
 

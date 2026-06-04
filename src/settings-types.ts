@@ -43,6 +43,8 @@ export interface FormatAssistantSettings {
 	autoUseSelectionOnSidebarOpen: boolean;
 	includeCurrentFileNameInPrompt: boolean;
 	includeFullCurrentNote: boolean;
+	// Lightweight history of the last few Instruction texts (quick re-pick):
+	recentInstructions: string[];
 	apiProfiles: ApiProfile[];
 	activeApiProfileId: string;
 }
@@ -68,6 +70,41 @@ export function normalizeModeRuntime(value: unknown): Partial<Record<FormatMode,
 	return result;
 }
 
+export const MAX_RECENT_INSTRUCTIONS = 3;
+
+export function normalizeRecentInstructions(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const item of value) {
+		if (typeof item !== "string") {
+			continue;
+		}
+		const text = item.trim();
+		if (!text || seen.has(text)) {
+			continue;
+		}
+		seen.add(text);
+		result.push(text);
+		if (result.length >= MAX_RECENT_INSTRUCTIONS) {
+			break;
+		}
+	}
+	return result;
+}
+
+// Returns a new list with `instruction` moved to the front, de-duplicated and
+// capped at MAX_RECENT_INSTRUCTIONS.
+export function pushRecentInstruction(list: string[], instruction: string): string[] {
+	const text = instruction.trim();
+	if (!text) {
+		return list;
+	}
+	return [text, ...list.filter((item) => item !== text)].slice(0, MAX_RECENT_INSTRUCTIONS);
+}
+
 export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 
 export const DEFAULT_SETTINGS: FormatAssistantSettings = {
@@ -91,6 +128,7 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	autoUseSelectionOnSidebarOpen: false,
 	includeCurrentFileNameInPrompt: true,
 	includeFullCurrentNote: false,
+	recentInstructions: [],
 	apiProfiles: [],
 	activeApiProfileId: ""
 };
@@ -104,6 +142,7 @@ export function normalizeSettings(data: unknown): FormatAssistantSettings {
 		...DEFAULT_SETTINGS,
 		...raw,
 		modeRuntime: normalizeModeRuntime(raw.modeRuntime),
+		recentInstructions: normalizeRecentInstructions(raw.recentInstructions),
 		apiProfiles: normalizeApiProfiles(raw.apiProfiles),
 		activeApiProfileId: typeof raw.activeApiProfileId === "string"
 			? raw.activeApiProfileId

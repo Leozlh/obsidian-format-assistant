@@ -481,6 +481,36 @@ function normalizeModeRuntime(value) {
   }
   return result;
 }
+var MAX_RECENT_INSTRUCTIONS = 3;
+function normalizeRecentInstructions(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const text = item.trim();
+    if (!text || seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    result.push(text);
+    if (result.length >= MAX_RECENT_INSTRUCTIONS) {
+      break;
+    }
+  }
+  return result;
+}
+function pushRecentInstruction(list, instruction) {
+  const text = instruction.trim();
+  if (!text) {
+    return list;
+  }
+  return [text, ...list.filter((item) => item !== text)].slice(0, MAX_RECENT_INSTRUCTIONS);
+}
 var DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 var DEFAULT_SETTINGS = {
   baseUrl: "https://api.openai.com/v1",
@@ -503,6 +533,7 @@ var DEFAULT_SETTINGS = {
   autoUseSelectionOnSidebarOpen: false,
   includeCurrentFileNameInPrompt: true,
   includeFullCurrentNote: false,
+  recentInstructions: [],
   apiProfiles: [],
   activeApiProfileId: ""
 };
@@ -512,6 +543,7 @@ function normalizeSettings(data) {
     ...DEFAULT_SETTINGS,
     ...raw,
     modeRuntime: normalizeModeRuntime(raw.modeRuntime),
+    recentInstructions: normalizeRecentInstructions(raw.recentInstructions),
     apiProfiles: normalizeApiProfiles(raw.apiProfiles),
     activeApiProfileId: typeof raw.activeApiProfileId === "string" ? raw.activeApiProfileId : ""
   };
@@ -1178,13 +1210,13 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     settingsButton.addEventListener("click", () => this.openSettings());
   }
   renderApiProfileSelector(root) {
+    if (this.plugin.settings.apiProfiles.length === 0) {
+      return;
+    }
     const panel = root.createDiv({ cls: "format-assistant-panel format-assistant-api-profile" });
     const header = panel.createDiv({ cls: "format-assistant-section-header" });
     header.createEl("h3", { text: "API" });
-    header.createSpan({
-      cls: "format-assistant-muted",
-      text: this.plugin.settings.apiProfiles.length ? "Select profile" : "No profiles"
-    });
+    header.createSpan({ cls: "format-assistant-muted", text: "Select profile" });
     const select = panel.createEl("select", { cls: "format-assistant-select" });
     select.createEl("option", {
       text: "Manual current settings",
@@ -1241,6 +1273,15 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.statusText = "Input cleared.";
       this.errorText = "";
       this.completedMs = null;
+      this.render();
+    });
+    const fallbackLabel = panel.createEl("label", { cls: "format-assistant-checkbox format-assistant-muted" });
+    const fallbackToggle = fallbackLabel.createEl("input", { attr: { type: "checkbox" } });
+    fallbackToggle.checked = this.plugin.settings.includeFullCurrentNote;
+    fallbackLabel.createSpan({ text: " Use the whole note when nothing is selected" });
+    fallbackToggle.addEventListener("change", async () => {
+      this.plugin.settings.includeFullCurrentNote = fallbackToggle.checked;
+      await this.plugin.saveSettings();
       this.render();
     });
   }
@@ -1300,6 +1341,27 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
   renderInstruction(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Instruction" });
+    const recents = this.plugin.settings.recentInstructions;
+    if (recents.length > 0) {
+      const pick = panel.createEl("select", { cls: "format-assistant-select" });
+      pick.createEl("option", { text: "Recent instructions\u2026", value: "" });
+      for (const r of recents) {
+        pick.createEl("option", {
+          text: r.length > 40 ? `${r.slice(0, 40)}\u2026` : r,
+          value: r
+        });
+      }
+      pick.value = "";
+      pick.addEventListener("change", () => {
+        if (pick.value) {
+          this.customInstruction = pick.value;
+          if (this.instructionEl) {
+            this.instructionEl.value = pick.value;
+          }
+        }
+        pick.value = "";
+      });
+    }
     this.instructionEl = panel.createEl("textarea", {
       cls: "format-assistant-textarea",
       attr: {
@@ -1356,6 +1418,13 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     insertButton.addEventListener("click", () => {
       this.confirmInsertBelow();
     });
+    const sendToInputButton = resultButtons.createEl("button", {
+      text: "\u2192 Input",
+      cls: "format-assistant-result-secondary"
+    });
+    sendToInputButton.setAttribute("aria-label", "Send result to the Input box for another pass");
+    sendToInputButton.disabled = !canCopy;
+    sendToInputButton.addEventListener("click", () => this.sendResultToInput());
     const cancelButton = resultButtons.createEl("button", {
       text: "Clear output",
       cls: "format-assistant-result-clear"
@@ -1440,6 +1509,16 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       new import_obsidian4.Notice(validationError);
       return;
     }
+    if (input.autoCaptured) {
+      new import_obsidian4.Notice(`Auto-used ${this.formatInputSource(input.source)} (${input.text.length} chars).`);
+    }
+    if (this.customInstruction.trim()) {
+      this.plugin.settings.recentInstructions = pushRecentInstruction(
+        this.plugin.settings.recentInstructions,
+        this.customInstruction
+      );
+      void this.plugin.saveSettings();
+    }
     this.loading = true;
     this.outputText = "";
     this.errorText = "";
@@ -1468,6 +1547,22 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.loading = false;
       this.render();
     }
+  }
+  // F6: move the result into the Input box to run another pass on it.
+  sendResultToInput() {
+    if (!this.outputText) {
+      new import_obsidian4.Notice("No result to send.");
+      return;
+    }
+    this.inputText = this.outputText;
+    this.currentContext = null;
+    this.outputText = "";
+    this.errorText = "";
+    this.completedMs = null;
+    this.lastGenerationSource = null;
+    this.statusText = "Result moved to Input for another pass.";
+    this.render();
+    new import_obsidian4.Notice("Result moved to Input.");
   }
   async copyResult() {
     if (!this.outputText) {
@@ -1552,11 +1647,13 @@ ${this.outputText}`,
   resolveInputForGenerate() {
     var _a, _b, _c, _d, _e;
     let text = this.inputText.trim();
+    let autoCaptured = false;
     if (!text) {
       const result = this.captureSelectionOrNoteBody();
       if (result.input) {
         this.adoptCapturedInput(result.input);
         text = result.input.text.trim();
+        autoCaptured = true;
       }
     }
     if (!text) {
@@ -1569,7 +1666,8 @@ ${this.outputText}`,
     return {
       text,
       source: isSelection ? this.currentContext.source : "manual",
-      currentFileName: isSelection ? (_e = (_d = this.currentContext) == null ? void 0 : _d.fileName) != null ? _e : activeFileName : activeFileName
+      currentFileName: isSelection ? (_e = (_d = this.currentContext) == null ? void 0 : _d.fileName) != null ? _e : activeFileName : activeFileName,
+      autoCaptured
     };
   }
   getInputSourceLabel() {
