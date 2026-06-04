@@ -4,8 +4,10 @@ import {
 	createApiProfileFromSettings,
 	MAX_API_PROFILES
 } from "./api-profiles";
+import { FORMAT_MODE_LABELS } from "./prompts";
 import {
 	DEFAULT_SYSTEM_PROMPT,
+	EDITABLE_RUNTIME_MODES,
 	type ProviderType
 } from "./settings-types";
 
@@ -170,6 +172,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Timeout seconds")
+			.setDesc("Global default. Used by modes without a per-mode override below.")
 			.addText((text) =>
 				text
 					.setPlaceholder("30")
@@ -179,6 +182,38 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		containerEl.createEl("h3", { text: "Per-mode limits" });
+		containerEl.createEl("p", {
+			cls: "format-assistant-setting-warning",
+			text: "Max Tokens / Timeout (seconds) per mode. Leave others to the global values above."
+		});
+		for (const mode of EDITABLE_RUNTIME_MODES) {
+			const limit = this.plugin.settings.modeRuntime[mode]
+				?? { maxTokens: this.plugin.settings.maxTokens, timeoutSeconds: this.plugin.settings.timeoutSeconds };
+			this.plugin.settings.modeRuntime[mode] = limit;
+			new Setting(containerEl)
+				.setName(FORMAT_MODE_LABELS[mode])
+				.setDesc("Max Tokens · Timeout (s)")
+				.addText((text) =>
+					text
+						.setPlaceholder("max tokens")
+						.setValue(String(limit.maxTokens))
+						.onChange(async (value) => {
+							limit.maxTokens = this.toNumber(value, limit.maxTokens, 1);
+							await this.plugin.saveSettings();
+						})
+				)
+				.addText((text) =>
+					text
+						.setPlaceholder("timeout s")
+						.setValue(String(limit.timeoutSeconds))
+						.onChange(async (value) => {
+							limit.timeoutSeconds = this.toNumber(value, limit.timeoutSeconds, 1);
+							await this.plugin.saveSettings();
+						})
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("Auto use selection on sidebar open")

@@ -126,9 +126,14 @@ export const MODE_RUNTIME: Partial<Record<FormatMode, ModeRuntime>> = {
 
 export function resolveModeRuntime(
 	mode: FormatMode,
-	settings: { maxTokens: number; timeoutSeconds: number }
+	settings: {
+		maxTokens: number;
+		timeoutSeconds: number;
+		modeRuntime?: Partial<Record<FormatMode, ModeRuntime>>;
+	}
 ): { maxTokens: number; timeoutSeconds: number } {
-	const override = MODE_RUNTIME[mode] ?? {};
+	// User per-mode setting wins; else the built-in default; else global.
+	const override = settings.modeRuntime?.[mode] ?? MODE_RUNTIME[mode] ?? {};
 	return {
 		maxTokens: override.maxTokens ?? settings.maxTokens,
 		timeoutSeconds: override.timeoutSeconds ?? settings.timeoutSeconds

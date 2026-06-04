@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildModePrompt, FORMAT_MODES, resolveModeRuntime } from "./prompts";
+import { normalizeModeRuntime } from "./settings-types";
 
 describe("buildModePrompt", () => {
 	it("note-organize keeps the structured heading template", () => {
@@ -63,5 +64,37 @@ describe("resolveModeRuntime", () => {
 			maxTokens: 1200,
 			timeoutSeconds: 30
 		});
+	});
+
+	it("lets a per-mode setting override the built-in default", () => {
+		const withOverride = {
+			maxTokens: 1200,
+			timeoutSeconds: 30,
+			modeRuntime: {
+				"note-organize": { maxTokens: 3500, timeoutSeconds: 90 },
+				"obsidian-markdown": { maxTokens: 800, timeoutSeconds: 20 }
+			}
+		};
+		expect(resolveModeRuntime("note-organize", withOverride)).toEqual({
+			maxTokens: 3500,
+			timeoutSeconds: 90
+		});
+		// editable mode now adjustable even though it has no built-in default
+		expect(resolveModeRuntime("obsidian-markdown", withOverride)).toEqual({
+			maxTokens: 800,
+			timeoutSeconds: 20
+		});
+	});
+});
+
+describe("normalizeModeRuntime", () => {
+	it("seeds defaults and keeps valid user values, dropping invalid ones", () => {
+		const out = normalizeModeRuntime({
+			"note-organize": { maxTokens: 3000, timeoutSeconds: -5 },
+			"diary-organize": { maxTokens: "abc", timeoutSeconds: 45 }
+		});
+		expect(out["note-organize"]).toEqual({ maxTokens: 3000, timeoutSeconds: 60 });
+		expect(out["diary-organize"]).toEqual({ maxTokens: 900, timeoutSeconds: 45 });
+		expect(out["obsidian-markdown"]).toEqual({ maxTokens: 1200, timeoutSeconds: 30 });
 	});
 });
