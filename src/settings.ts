@@ -41,15 +41,14 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("API Key")
-			.setDesc("Stored in Obsidian plugin data. The plugin never logs this value.")
+			.setDesc("Stored in Obsidian SecretStorage. The plugin never logs this value.")
 			.addText((text) => {
 				text.inputEl.type = "password";
-				text
-					.setPlaceholder("sk-...")
-					.setValue(this.plugin.settings.apiKey)
-					.onChange(async (value) => {
-						this.plugin.settings.apiKey = value;
-						await this.plugin.saveSettings();
+					text
+						.setPlaceholder("sk-...")
+						.setValue(this.plugin.settings.apiKey)
+						.onChange(async (value) => {
+							await this.plugin.setApiKey(value);
 					});
 			});
 
@@ -340,6 +339,7 @@ export class FormatAssistantSettingTab extends PluginSettingTab {
 							this.plugin.settings,
 							profileName
 						);
+						await this.plugin.secureApiProfile(profile);
 						this.plugin.settings.apiProfiles = [
 							...this.plugin.settings.apiProfiles,
 							profile

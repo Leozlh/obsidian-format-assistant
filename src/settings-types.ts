@@ -27,6 +27,7 @@ const DEFAULT_MODE_RUNTIME: Record<string, ModeLimit> = {
 export interface FormatAssistantSettings {
 	baseUrl: string;
 	apiKey: string;
+	apiKeyRef: string;
 	model: string;
 	maxTokens: number;
 	temperature: number;
@@ -110,6 +111,7 @@ export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	baseUrl: "https://api.openai.com/v1",
 	apiKey: "",
+	apiKeyRef: "",
 	model: "gpt-4o-mini",
 	maxTokens: 1200,
 	temperature: 0.2,

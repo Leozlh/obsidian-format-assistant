@@ -111,18 +111,72 @@ export default class FormatAssistantPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = normalizeSettings(await this.loadData());
+		const raw = await this.migrateSecrets(await this.loadData());
+		this.settings = normalizeSettings(raw);
+		this.settings.apiKey = this.settings.apiKeyRef
+			? this.app.secretStorage.getSecret(this.settings.apiKeyRef) ?? ""
+			: "";
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.saveData({ ...this.settings, apiKey: "" });
 	}
 
 	async applyApiProfile(profile: ApiProfile): Promise<void> {
 		applyApiProfile(this.settings, profile);
+		this.settings.apiKey = profile.apiKeyRef
+			? this.app.secretStorage.getSecret(profile.apiKeyRef) ?? ""
+			: "";
 		await this.saveSettings();
 		this.refreshSidebarViews();
 		new Notice(`API profile switched: ${profile.name}`);
+	}
+
+	async setApiKey(value: string): Promise<void> {
+		const ref = this.settings.apiKeyRef || `${this.manifest.id}-current-api-key`;
+		this.app.secretStorage.setSecret(ref, value);
+		this.settings.apiKeyRef = ref;
+		this.settings.apiKey = value;
+		await this.saveSettings();
+	}
+
+	async secureApiProfile(profile: ApiProfile): Promise<void> {
+		const ref = `${this.manifest.id}-profile-${profile.id}`;
+		this.app.secretStorage.setSecret(ref, this.settings.apiKey);
+		profile.apiKeyRef = ref;
+	}
+
+	private async migrateSecrets(data: unknown): Promise<unknown> {
+		const raw = data && typeof data === "object" ? structuredClone(data) as Record<string, unknown> : {};
+		const legacyKey = typeof raw.apiKey === "string" ? raw.apiKey : "";
+		let currentRef = typeof raw.apiKeyRef === "string" ? raw.apiKeyRef : "";
+		if (legacyKey) {
+			currentRef ||= `${this.manifest.id}-current-api-key`;
+			this.app.secretStorage.setSecret(currentRef, legacyKey);
+		}
+		raw.apiKey = "";
+		raw.apiKeyRef = currentRef;
+		if (Array.isArray(raw.apiProfiles)) {
+			raw.apiProfiles = raw.apiProfiles.map((item) => {
+				if (!item || typeof item !== "object") return item;
+				const profile = { ...item } as Record<string, unknown>;
+				const id = typeof profile.id === "string" ? profile.id : crypto.randomUUID();
+				const key = typeof profile.apiKey === "string" ? profile.apiKey : "";
+				let ref = typeof profile.apiKeyRef === "string" ? profile.apiKeyRef : "";
+				if (key) {
+					ref ||= `${this.manifest.id}-profile-${id}`;
+					this.app.secretStorage.setSecret(ref, key);
+				}
+				delete profile.apiKey;
+				profile.apiKeyRef = ref;
+				profile.omitTemperature ??= false;
+				profile.useMaxCompletionTokens ??= false;
+				profile.modeRuntime ??= structuredClone(raw.modeRuntime ?? {});
+				return profile;
+			});
+		}
+		await this.saveData(raw);
+		return raw;
 	}
 
 	async openSidebar(): Promise<FormatAssistantSidebarView | null> {

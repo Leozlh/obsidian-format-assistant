@@ -32,12 +32,15 @@ function createApiProfileFromSettings(settings, name) {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: toProfileName(name, settings),
     baseUrl: settings.baseUrl,
-    apiKey: settings.apiKey,
+    apiKeyRef: settings.apiKeyRef,
     model: settings.model,
     maxTokens: settings.maxTokens,
     temperature: settings.temperature,
     providerType: settings.providerType,
-    timeoutSeconds: settings.timeoutSeconds
+    timeoutSeconds: settings.timeoutSeconds,
+    omitTemperature: settings.omitTemperature,
+    useMaxCompletionTokens: settings.useMaxCompletionTokens,
+    modeRuntime: structuredClone(settings.modeRuntime)
   };
 }
 function normalizeApiProfiles(value) {
@@ -46,18 +49,21 @@ function normalizeApiProfiles(value) {
   }
   return value.filter((item) => {
     return Boolean(
-      item && typeof item.id === "string" && typeof item.name === "string" && typeof item.baseUrl === "string" && typeof item.apiKey === "string" && typeof item.model === "string" && typeof item.maxTokens === "number" && typeof item.temperature === "number" && item.providerType === "openai-compatible" && typeof item.timeoutSeconds === "number"
+      item && typeof item.id === "string" && typeof item.name === "string" && typeof item.baseUrl === "string" && typeof item.apiKeyRef === "string" && typeof item.model === "string" && typeof item.maxTokens === "number" && typeof item.temperature === "number" && item.providerType === "openai-compatible" && typeof item.timeoutSeconds === "number" && typeof item.omitTemperature === "boolean" && typeof item.useMaxCompletionTokens === "boolean" && typeof item.modeRuntime === "object" && item.modeRuntime !== null
     );
   }).slice(0, MAX_API_PROFILES);
 }
 function applyApiProfile(settings, profile) {
   settings.baseUrl = profile.baseUrl;
-  settings.apiKey = profile.apiKey;
+  settings.apiKeyRef = profile.apiKeyRef;
   settings.model = profile.model;
   settings.maxTokens = profile.maxTokens;
   settings.temperature = profile.temperature;
   settings.providerType = profile.providerType;
   settings.timeoutSeconds = profile.timeoutSeconds;
+  settings.omitTemperature = profile.omitTemperature;
+  settings.useMaxCompletionTokens = profile.useMaxCompletionTokens;
+  settings.modeRuntime = structuredClone(profile.modeRuntime);
   settings.activeApiProfileId = profile.id;
 }
 function toProfileName(name, settings) {
@@ -515,6 +521,7 @@ var DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 var DEFAULT_SETTINGS = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "",
+  apiKeyRef: "",
   model: "gpt-4o-mini",
   maxTokens: 1200,
   temperature: 0.2,
@@ -588,11 +595,10 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("API Key").setDesc("Stored in Obsidian plugin data. The plugin never logs this value.").addText((text) => {
+    new import_obsidian2.Setting(containerEl).setName("API Key").setDesc("Stored in Obsidian SecretStorage. The plugin never logs this value.").addText((text) => {
       text.inputEl.type = "password";
       text.setPlaceholder("sk-...").setValue(this.plugin.settings.apiKey).onChange(async (value) => {
-        this.plugin.settings.apiKey = value;
-        await this.plugin.saveSettings();
+        await this.plugin.setApiKey(value);
       });
     });
     new import_obsidian2.Setting(containerEl).setName("Model").setDesc("Example: gpt-4o-mini.").addText(
@@ -767,6 +773,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
           this.plugin.settings,
           profileName
         );
+        await this.plugin.secureApiProfile(profile);
         this.plugin.settings.apiProfiles = [
           ...this.plugin.settings.apiProfiles,
           profile
@@ -1792,16 +1799,66 @@ var FormatAssistantPlugin = class extends import_obsidian5.Plugin {
     this.app.workspace.detachLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE);
   }
   async loadSettings() {
-    this.settings = normalizeSettings(await this.loadData());
+    var _a;
+    const raw = await this.migrateSecrets(await this.loadData());
+    this.settings = normalizeSettings(raw);
+    this.settings.apiKey = this.settings.apiKeyRef ? (_a = this.app.secretStorage.getSecret(this.settings.apiKeyRef)) != null ? _a : "" : "";
   }
   async saveSettings() {
-    await this.saveData(this.settings);
+    await this.saveData({ ...this.settings, apiKey: "" });
   }
   async applyApiProfile(profile) {
+    var _a;
     applyApiProfile(this.settings, profile);
+    this.settings.apiKey = profile.apiKeyRef ? (_a = this.app.secretStorage.getSecret(profile.apiKeyRef)) != null ? _a : "" : "";
     await this.saveSettings();
     this.refreshSidebarViews();
     new import_obsidian5.Notice(`API profile switched: ${profile.name}`);
+  }
+  async setApiKey(value) {
+    const ref = this.settings.apiKeyRef || `${this.manifest.id}-current-api-key`;
+    this.app.secretStorage.setSecret(ref, value);
+    this.settings.apiKeyRef = ref;
+    this.settings.apiKey = value;
+    await this.saveSettings();
+  }
+  async secureApiProfile(profile) {
+    const ref = `${this.manifest.id}-profile-${profile.id}`;
+    this.app.secretStorage.setSecret(ref, this.settings.apiKey);
+    profile.apiKeyRef = ref;
+  }
+  async migrateSecrets(data) {
+    const raw = data && typeof data === "object" ? structuredClone(data) : {};
+    const legacyKey = typeof raw.apiKey === "string" ? raw.apiKey : "";
+    let currentRef = typeof raw.apiKeyRef === "string" ? raw.apiKeyRef : "";
+    if (legacyKey) {
+      currentRef || (currentRef = `${this.manifest.id}-current-api-key`);
+      this.app.secretStorage.setSecret(currentRef, legacyKey);
+    }
+    raw.apiKey = "";
+    raw.apiKeyRef = currentRef;
+    if (Array.isArray(raw.apiProfiles)) {
+      raw.apiProfiles = raw.apiProfiles.map((item) => {
+        var _a, _b, _c, _d;
+        if (!item || typeof item !== "object") return item;
+        const profile = { ...item };
+        const id = typeof profile.id === "string" ? profile.id : crypto.randomUUID();
+        const key = typeof profile.apiKey === "string" ? profile.apiKey : "";
+        let ref = typeof profile.apiKeyRef === "string" ? profile.apiKeyRef : "";
+        if (key) {
+          ref || (ref = `${this.manifest.id}-profile-${id}`);
+          this.app.secretStorage.setSecret(ref, key);
+        }
+        delete profile.apiKey;
+        profile.apiKeyRef = ref;
+        (_a = profile.omitTemperature) != null ? _a : profile.omitTemperature = false;
+        (_b = profile.useMaxCompletionTokens) != null ? _b : profile.useMaxCompletionTokens = false;
+        (_d = profile.modeRuntime) != null ? _d : profile.modeRuntime = structuredClone((_c = raw.modeRuntime) != null ? _c : {});
+        return profile;
+      });
+    }
+    await this.saveData(raw);
+    return raw;
   }
   async openSidebar() {
     const leaves = this.app.workspace.getLeavesOfType(FORMAT_ASSISTANT_VIEW_TYPE);

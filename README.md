@@ -39,7 +39,7 @@ Plus: `Open Format Assistant sidebar`, `Focus Format Assistant input`, `Send sel
 Open the plugin settings and fill in:
 
 - **API Base URL** — the API root, e.g. `https://api.openai.com/v1` (do **not** include `/chat/completions`)
-- **API Key** — stored in Obsidian plugin data; never hardcoded or logged
+- **API Key** — stored in Obsidian SecretStorage; plugin data and profiles keep references only
 - **Model** — e.g. `gpt-4o-mini`
 - **Max Tokens** / **Temperature** / **Timeout seconds**
 - **Provider Type**: `OpenAI-compatible`
