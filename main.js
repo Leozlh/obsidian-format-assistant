@@ -159,11 +159,11 @@ var MODE_RUNTIME = {
   "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
 };
 function resolveModeRuntime(mode, settings) {
-  var _a, _b, _c;
-  const override = (_a = MODE_RUNTIME[mode]) != null ? _a : {};
+  var _a, _b, _c, _d, _e;
+  const override = (_c = (_b = (_a = settings.modeRuntime) == null ? void 0 : _a[mode]) != null ? _b : MODE_RUNTIME[mode]) != null ? _c : {};
   return {
-    maxTokens: (_b = override.maxTokens) != null ? _b : settings.maxTokens,
-    timeoutSeconds: (_c = override.timeoutSeconds) != null ? _c : settings.timeoutSeconds
+    maxTokens: (_d = override.maxTokens) != null ? _d : settings.maxTokens,
+    timeoutSeconds: (_e = override.timeoutSeconds) != null ? _e : settings.timeoutSeconds
   };
 }
 var FORMAT_MODE_LABELS = {
@@ -480,6 +480,33 @@ function toPresetName(content) {
 }
 
 // src/settings-types.ts
+var EDITABLE_RUNTIME_MODES = [
+  "obsidian-markdown",
+  "note-organize",
+  "diary-organize"
+];
+var DEFAULT_MODE_RUNTIME = {
+  "obsidian-markdown": { maxTokens: 1200, timeoutSeconds: 30 },
+  "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
+  "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+};
+function positiveInt(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback;
+}
+function normalizeModeRuntime(value) {
+  const raw = typeof value === "object" && value !== null ? value : {};
+  const result = {};
+  for (const mode of EDITABLE_RUNTIME_MODES) {
+    const def = DEFAULT_MODE_RUNTIME[mode];
+    const entry = raw[mode];
+    result[mode] = {
+      maxTokens: positiveInt(entry == null ? void 0 : entry.maxTokens, def.maxTokens),
+      timeoutSeconds: positiveInt(entry == null ? void 0 : entry.timeoutSeconds, def.timeoutSeconds)
+    };
+  }
+  return result;
+}
 var DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
 var DEFAULT_SETTINGS = {
   baseUrl: "https://api.openai.com/v1",
@@ -493,6 +520,11 @@ var DEFAULT_SETTINGS = {
   timeoutSeconds: 30,
   omitTemperature: false,
   useMaxCompletionTokens: false,
+  modeRuntime: {
+    "obsidian-markdown": { maxTokens: 1200, timeoutSeconds: 30 },
+    "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
+    "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+  },
   sidebarDefaultMode: "obsidian-markdown",
   autoUseSelectionOnSidebarOpen: false,
   includeCurrentFileNameInPrompt: true,
@@ -506,6 +538,7 @@ function normalizeSettings(data) {
   return {
     ...DEFAULT_SETTINGS,
     ...raw,
+    modeRuntime: normalizeModeRuntime(raw.modeRuntime),
     promptPresets: normalizePromptPresets(raw.promptPresets),
     apiProfiles: normalizeApiProfiles(raw.apiProfiles),
     activeApiProfileId: typeof raw.activeApiProfileId === "string" ? raw.activeApiProfileId : ""
@@ -540,6 +573,7 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
     this.plugin = plugin;
   }
   display() {
+    var _a;
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Format Assistant" });
@@ -621,12 +655,32 @@ var FormatAssistantSettingTab = class extends import_obsidian2.PluginSettingTab 
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian2.Setting(containerEl).setName("Timeout seconds").addText(
+    new import_obsidian2.Setting(containerEl).setName("Timeout seconds").setDesc("Global default. Used by modes without a per-mode override below.").addText(
       (text) => text.setPlaceholder("30").setValue(String(this.plugin.settings.timeoutSeconds)).onChange(async (value) => {
         this.plugin.settings.timeoutSeconds = this.toNumber(value, 30, 1);
         await this.plugin.saveSettings();
       })
     );
+    containerEl.createEl("h3", { text: "Per-mode limits" });
+    containerEl.createEl("p", {
+      cls: "format-assistant-setting-warning",
+      text: "Max Tokens / Timeout (seconds) per mode. Leave others to the global values above."
+    });
+    for (const mode of EDITABLE_RUNTIME_MODES) {
+      const limit = (_a = this.plugin.settings.modeRuntime[mode]) != null ? _a : { maxTokens: this.plugin.settings.maxTokens, timeoutSeconds: this.plugin.settings.timeoutSeconds };
+      this.plugin.settings.modeRuntime[mode] = limit;
+      new import_obsidian2.Setting(containerEl).setName(FORMAT_MODE_LABELS[mode]).setDesc("Max Tokens \xB7 Timeout (s)").addText(
+        (text) => text.setPlaceholder("max tokens").setValue(String(limit.maxTokens)).onChange(async (value) => {
+          limit.maxTokens = this.toNumber(value, limit.maxTokens, 1);
+          await this.plugin.saveSettings();
+        })
+      ).addText(
+        (text) => text.setPlaceholder("timeout s").setValue(String(limit.timeoutSeconds)).onChange(async (value) => {
+          limit.timeoutSeconds = this.toNumber(value, limit.timeoutSeconds, 1);
+          await this.plugin.saveSettings();
+        })
+      );
+    }
     new import_obsidian2.Setting(containerEl).setName("Auto use selection on sidebar open").setDesc("When enabled, the sidebar reads the current editor selection as temporary context when opened.").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.autoUseSelectionOnSidebarOpen).onChange(async (value) => {
         this.plugin.settings.autoUseSelectionOnSidebarOpen = value;
@@ -851,6 +905,37 @@ var SelectionService = class {
       error: null
     };
   }
+  // Falls back to "the whole note body" but turns it into a genuine editor
+  // selection (frontmatter + leading heading skipped). Because it becomes a
+  // real selection (source "selection" with from/to), the result can still be
+  // replaced / inserted — unlike captureCurrentContext's "note" fallback.
+  captureNoteBodyAsSelection() {
+    var _a, _b, _c, _d;
+    const info = this.getActiveMarkdownInfo();
+    if (!(info == null ? void 0 : info.editor)) {
+      return { input: null, error: "Switch to a Markdown editor first." };
+    }
+    const editor = info.editor;
+    const range = getNoteBodyRange(editor);
+    const text = editor.getRange(range.from, range.to);
+    if (!text.trim()) {
+      return { input: null, error: "This note has no body text to capture." };
+    }
+    editor.setSelection(range.from, range.to);
+    return {
+      input: {
+        source: "selection",
+        fileName: (_b = (_a = info.file) == null ? void 0 : _a.basename) != null ? _b : null,
+        filePath: (_d = (_c = info.file) == null ? void 0 : _c.path) != null ? _d : null,
+        text,
+        wordCount: countWords(text),
+        characterCount: text.length,
+        from: range.from,
+        to: range.to
+      },
+      error: null
+    };
+  }
   verifyCapturedSelection(input) {
     var _a;
     const info = this.getActiveMarkdownInfo();
@@ -996,7 +1081,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     return "sparkles";
   }
   async onOpen() {
-    this.captureCurrentSelection(false);
+    this.captureCurrentSelection(false, false);
     this.render();
     this.refreshContextStatus();
     this.registerDomEvent(this.contentEl, "pointerenter", () => {
@@ -1048,15 +1133,58 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     (_a = this.customInputEl) == null ? void 0 : _a.focus();
   }
   useCurrentSelection(showNotice = true) {
-    var _a;
-    if (!this.captureCurrentSelection(showNotice)) {
+    var _a, _b;
+    const sel = this.plugin.selectionService.captureCurrentContext(false);
+    if (sel.input) {
+      this.currentContext = sel.input;
+      this.errorText = "";
+      this.statusText = `Captured ${describeInput(sel.input.text)}.`;
+      this.render();
+      if (showNotice) {
+        new import_obsidian4.Notice("Selection sent to Format Assistant.");
+      }
       return;
     }
-    if (showNotice) {
-      new import_obsidian4.Notice(
-        ((_a = this.currentContext) == null ? void 0 : _a.source) === "note" ? "Current note body sent to Format Assistant." : "Selection sent to Format Assistant."
-      );
+    if (this.plugin.settings.includeFullCurrentNote) {
+      const note = this.plugin.selectionService.captureNoteBodyAsSelection();
+      if (note.input) {
+        this.currentContext = note.input;
+        this.errorText = "";
+        this.statusText = `No selection \u2014 selected the whole note body: ${describeInput(note.input.text)}.`;
+        this.render();
+        if (showNotice) {
+          new import_obsidian4.Notice("No selection found \u2014 selected the whole note body.");
+        }
+        return;
+      }
+      this.currentContext = null;
+      this.statusText = (_a = note.error) != null ? _a : "No selection and no note body.";
+      this.errorText = "";
+      this.render();
+      if (showNotice) {
+        new import_obsidian4.Notice(this.statusText);
+      }
+      return;
     }
+    this.currentContext = null;
+    this.statusText = (_b = sel.error) != null ? _b : "Select text first.";
+    this.errorText = "";
+    this.render();
+    if (showNotice) {
+      new import_obsidian4.Notice(this.statusText);
+    }
+  }
+  // Shared capture used by Use and by Generate's auto-capture: live selection
+  // first, then (if enabled) the whole note body as a real selection.
+  captureSelectionOrNoteBody() {
+    const sel = this.plugin.selectionService.captureCurrentContext(false);
+    if (sel.input) {
+      return sel;
+    }
+    if (this.plugin.settings.includeFullCurrentNote) {
+      return this.plugin.selectionService.captureNoteBodyAsSelection();
+    }
+    return sel;
   }
   setContextFromEditor(editor, view, showNotice) {
     const context = this.plugin.selectionService.captureFromEditor(editor, view);
@@ -1136,7 +1264,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     if (!hasContent) {
       panel.createDiv({
         cls: "format-assistant-empty format-assistant-context-preview",
-        text: "No context captured. Select text, then Use / Refresh."
+        text: this.plugin.settings.includeFullCurrentNote ? "No context captured. Use / Refresh grabs the selection, or the whole note body when nothing is selected." : "No context captured. Select text, then Use / Refresh."
       });
       this.renderSelectionControls(panel);
       return;
@@ -1275,9 +1403,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     useButton.addEventListener("click", () => this.useCurrentSelection(true));
     const refreshButton = buttons.createEl("button", { text: "Refresh" });
     refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
-    const bodyButton = buttons.createEl("button", { text: "Note body" });
-    bodyButton.setAttribute("aria-label", "Select note body");
-    bodyButton.addEventListener("click", () => this.selectNoteBody());
     const clearButton = buttons.createEl("button", { text: "Clear" });
     clearButton.addEventListener("click", () => {
       this.currentContext = null;
@@ -1286,23 +1411,6 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.completedMs = null;
       this.render();
     });
-  }
-  selectNoteBody() {
-    const info = this.plugin.selectionService.getActiveMarkdownInfo();
-    if (!(info == null ? void 0 : info.editor)) {
-      this.setError("Switch to a Markdown editor first.");
-      new import_obsidian4.Notice("Switch to a Markdown editor first.");
-      return;
-    }
-    const { from, to } = getNoteBodyRange(info.editor);
-    const bodyText = info.editor.getRange(from, to);
-    if (!bodyText.trim()) {
-      this.setError("This note has no body text to select.");
-      new import_obsidian4.Notice("This note has no body text to select.");
-      return;
-    }
-    info.editor.setSelection(from, to);
-    this.useCurrentSelection(true);
   }
   renderActions(root) {
     const generatePanel = root.createDiv({ cls: "format-assistant-action-group" });
@@ -1535,11 +1643,9 @@ ${this.outputText}`,
     }
     return result.state;
   }
-  captureCurrentSelection(showNotice) {
+  captureCurrentSelection(showNotice, allowFallback = this.plugin.settings.includeFullCurrentNote) {
     var _a;
-    const result = this.plugin.selectionService.captureCurrentContext(
-      this.plugin.settings.includeFullCurrentNote
-    );
+    const result = this.plugin.selectionService.captureCurrentContext(allowFallback);
     if (!result.input) {
       this.currentContext = null;
       const message = (_a = result.error) != null ? _a : "Select text first or open a note with body text.";
@@ -1568,7 +1674,10 @@ ${this.outputText}`,
       };
     }
     if (!((_d = this.currentContext) == null ? void 0 : _d.text.trim())) {
-      this.captureCurrentSelection(false);
+      const result = this.captureSelectionOrNoteBody();
+      if (result.input) {
+        this.currentContext = result.input;
+      }
     }
     if ((_e = this.currentContext) == null ? void 0 : _e.text.trim()) {
       return {

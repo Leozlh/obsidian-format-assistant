@@ -147,6 +147,41 @@ export class SelectionService {
 		};
 	}
 
+	// Falls back to "the whole note body" but turns it into a genuine editor
+	// selection (frontmatter + leading heading skipped). Because it becomes a
+	// real selection (source "selection" with from/to), the result can still be
+	// replaced / inserted — unlike captureCurrentContext's "note" fallback.
+	captureNoteBodyAsSelection(): CaptureResult {
+		const info = this.getActiveMarkdownInfo();
+		if (!info?.editor) {
+			return { input: null, error: "Switch to a Markdown editor first." };
+		}
+
+		const editor = info.editor;
+		const range = getNoteBodyRange(editor);
+		const text = editor.getRange(range.from, range.to);
+		if (!text.trim()) {
+			return { input: null, error: "This note has no body text to capture." };
+		}
+
+		// Make it a real selection so verifyCapturedSelection passes on write-back.
+		editor.setSelection(range.from, range.to);
+
+		return {
+			input: {
+				source: "selection",
+				fileName: info.file?.basename ?? null,
+				filePath: info.file?.path ?? null,
+				text,
+				wordCount: countWords(text),
+				characterCount: text.length,
+				from: range.from,
+				to: range.to
+			},
+			error: null
+		};
+	}
+
 	verifyCapturedSelection(input: CapturedInput | null): VerifySelectionResult {
 		const info = this.getActiveMarkdownInfo();
 		if (!info?.editor) {

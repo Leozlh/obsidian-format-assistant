@@ -79,7 +79,9 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	async onOpen() {
-		this.captureCurrentSelection(false);
+		// Only pre-capture a live selection here; never silently grab the note
+		// body on open (that would mutate the editor selection unexpectedly).
+		this.captureCurrentSelection(false, false);
 		this.render();
 		this.refreshContextStatus();
 		// The editor fires no event on selection change, so the preview can go
@@ -146,16 +148,67 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	useCurrentSelection(showNotice = true): void {
-		// "Use"/"Refresh" capture the selection only — never silently fall back to
-		// the whole note. A selection source keeps Replace / Insert available;
-		// note fallback (if enabled) still applies at Generate time.
-		if (!this.captureCurrentSelection(showNotice, false)) {
+		// Live selection wins and keeps Replace / Insert available.
+		const sel = this.plugin.selectionService.captureCurrentContext(false);
+		if (sel.input) {
+			this.currentContext = sel.input;
+			this.errorText = "";
+			this.statusText = `Captured ${describeInput(sel.input.text)}.`;
+			this.render();
+			if (showNotice) {
+				new Notice("Selection sent to Format Assistant.");
+			}
 			return;
 		}
 
-		if (showNotice) {
-			new Notice("Selection sent to Format Assistant.");
+		// No selection: if the note fallback is enabled, select the whole note
+		// body in the editor. It becomes a real selection, so Replace / Insert
+		// stay available (this is the old "Note body" convenience, now automatic).
+		if (this.plugin.settings.includeFullCurrentNote) {
+			const note = this.plugin.selectionService.captureNoteBodyAsSelection();
+			if (note.input) {
+				this.currentContext = note.input;
+				this.errorText = "";
+				this.statusText = `No selection — selected the whole note body: ${describeInput(note.input.text)}.`;
+				this.render();
+				if (showNotice) {
+					new Notice("No selection found — selected the whole note body.");
+				}
+				return;
+			}
+			this.currentContext = null;
+			this.statusText = note.error ?? "No selection and no note body.";
+			this.errorText = "";
+			this.render();
+			if (showNotice) {
+				new Notice(this.statusText);
+			}
+			return;
 		}
+
+		this.currentContext = null;
+		this.statusText = sel.error ?? "Select text first.";
+		this.errorText = "";
+		this.render();
+		if (showNotice) {
+			new Notice(this.statusText);
+		}
+	}
+
+	// Shared capture used by Use and by Generate's auto-capture: live selection
+	// first, then (if enabled) the whole note body as a real selection.
+	private captureSelectionOrNoteBody(): {
+		input: import("./selection-service").CapturedInput | null;
+		error: string | null;
+	} {
+		const sel = this.plugin.selectionService.captureCurrentContext(false);
+		if (sel.input) {
+			return sel;
+		}
+		if (this.plugin.settings.includeFullCurrentNote) {
+			return this.plugin.selectionService.captureNoteBodyAsSelection();
+		}
+		return sel;
 	}
 
 	setContextFromEditor(editor: Editor, view: MarkdownView | null, showNotice: boolean): void {
@@ -250,7 +303,9 @@ export class FormatAssistantSidebarView extends ItemView {
 		if (!hasContent) {
 			panel.createDiv({
 				cls: "format-assistant-empty format-assistant-context-preview",
-				text: "No context captured. Select text, then Use / Refresh."
+				text: this.plugin.settings.includeFullCurrentNote
+					? "No context captured. Use / Refresh grabs the selection, or the whole note body when nothing is selected."
+					: "No context captured. Select text, then Use / Refresh."
 			});
 			this.renderSelectionControls(panel);
 			return;
@@ -726,7 +781,10 @@ export class FormatAssistantSidebarView extends ItemView {
 		}
 
 		if (!this.currentContext?.text.trim()) {
-			this.captureCurrentSelection(false);
+			const result = this.captureSelectionOrNoteBody();
+			if (result.input) {
+				this.currentContext = result.input;
+			}
 		}
 
 		if (this.currentContext?.text.trim()) {

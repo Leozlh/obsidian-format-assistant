@@ -232,6 +232,62 @@ describe("SelectionService", () => {
 	});
 });
 
+describe("captureNoteBodyAsSelection", () => {
+	function createBodyEditor(value: string): { editor: Editor; getSelected: () => { from: EditorPosition; to: EditorPosition } | null } {
+		const lines = value.split("\n");
+		let selected: { from: EditorPosition; to: EditorPosition } | null = null;
+		const editor = {
+			lineCount: () => lines.length,
+			getLine: (i: number) => lines[i] ?? "",
+			getRange: (from: EditorPosition, to: EditorPosition) => {
+				if (from.line === to.line) {
+					return lines[from.line].slice(from.ch, to.ch);
+				}
+				const parts = [lines[from.line].slice(from.ch)];
+				for (let i = from.line + 1; i < to.line; i++) {
+					parts.push(lines[i]);
+				}
+				parts.push(lines[to.line].slice(0, to.ch));
+				return parts.join("\n");
+			},
+			setSelection: (from: EditorPosition, to: EditorPosition) => {
+				selected = { from, to };
+			}
+		} as unknown as Editor;
+		return { editor, getSelected: () => selected };
+	}
+
+	it("selects the whole note body as a real selection (Replace/Insert stay usable)", () => {
+		const { editor, getSelected } = createBodyEditor(
+			"---\ntitle: T\n---\n# Title\n\nFirst body line.\nSecond body line."
+		);
+		const service = createService(createMarkdownInfo(editor, "Notes/Body.md"));
+
+		const result = service.captureNoteBodyAsSelection();
+
+		expect(result.error).toBeNull();
+		expect(result.input?.source).toBe("selection");
+		expect(result.input?.text).toBe("First body line.\nSecond body line.");
+		expect(result.input?.from).toEqual({ line: 5, ch: 0 });
+		expect(result.input?.to).toEqual({ line: 6, ch: "Second body line.".length });
+		// It must actually move the editor selection so write-back verifies.
+		expect(getSelected()).toEqual({
+			from: { line: 5, ch: 0 },
+			to: { line: 6, ch: "Second body line.".length }
+		});
+	});
+
+	it("errors when there is no body text", () => {
+		const { editor } = createBodyEditor("---\ntitle: Empty\n---\n# Empty\n\n");
+		const service = createService(createMarkdownInfo(editor));
+
+		const result = service.captureNoteBodyAsSelection();
+
+		expect(result.input).toBeNull();
+		expect(result.error).toBe("This note has no body text to capture.");
+	});
+});
+
 describe("getNoteBodyRange", () => {
 	it("skips frontmatter and a leading heading", () => {
 		const editor = createLineEditor(
