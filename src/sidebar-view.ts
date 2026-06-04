@@ -12,7 +12,6 @@ import {
 	countLines,
 	countWords,
 	describeInput,
-	getNoteBodyRange,
 	type CapturedInput,
 	type InputSource,
 	type VerifiedSelectionState
@@ -147,16 +146,15 @@ export class FormatAssistantSidebarView extends ItemView {
 	}
 
 	useCurrentSelection(showNotice = true): void {
-		if (!this.captureCurrentSelection(showNotice)) {
+		// "Use"/"Refresh" capture the selection only — never silently fall back to
+		// the whole note. A selection source keeps Replace / Insert available;
+		// note fallback (if enabled) still applies at Generate time.
+		if (!this.captureCurrentSelection(showNotice, false)) {
 			return;
 		}
 
 		if (showNotice) {
-			new Notice(
-				this.currentContext?.source === "note"
-					? "Current note body sent to Format Assistant."
-					: "Selection sent to Format Assistant."
-			);
+			new Notice("Selection sent to Format Assistant.");
 		}
 	}
 
@@ -413,10 +411,6 @@ export class FormatAssistantSidebarView extends ItemView {
 		const refreshButton = buttons.createEl("button", { text: "Refresh" });
 		refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
 
-		const bodyButton = buttons.createEl("button", { text: "Note body" });
-		bodyButton.setAttribute("aria-label", "Select note body");
-		bodyButton.addEventListener("click", () => this.selectNoteBody());
-
 		const clearButton = buttons.createEl("button", { text: "Clear" });
 		clearButton.addEventListener("click", () => {
 			this.currentContext = null;
@@ -425,28 +419,6 @@ export class FormatAssistantSidebarView extends ItemView {
 			this.completedMs = null;
 			this.render();
 		});
-	}
-
-	private selectNoteBody(): void {
-		const info = this.plugin.selectionService.getActiveMarkdownInfo();
-		if (!info?.editor) {
-			this.setError("Switch to a Markdown editor first.");
-			new Notice("Switch to a Markdown editor first.");
-			return;
-		}
-
-		const { from, to } = getNoteBodyRange(info.editor);
-		const bodyText = info.editor.getRange(from, to);
-		if (!bodyText.trim()) {
-			this.setError("This note has no body text to select.");
-			new Notice("This note has no body text to select.");
-			return;
-		}
-
-		// Turn the note body into a real editor selection so the existing
-		// verified selection path supports Replace / Insert.
-		info.editor.setSelection(from, to);
-		this.useCurrentSelection(true);
 	}
 
 	private renderActions(root: HTMLElement): void {
@@ -717,10 +689,11 @@ export class FormatAssistantSidebarView extends ItemView {
 		return result.state;
 	}
 
-	private captureCurrentSelection(showNotice: boolean): boolean {
-		const result = this.plugin.selectionService.captureCurrentContext(
-			this.plugin.settings.includeFullCurrentNote
-		);
+	private captureCurrentSelection(
+		showNotice: boolean,
+		allowFallback: boolean = this.plugin.settings.includeFullCurrentNote
+	): boolean {
+		const result = this.plugin.selectionService.captureCurrentContext(allowFallback);
 		if (!result.input) {
 			this.currentContext = null;
 			const message = result.error ?? "Select text first or open a note with body text.";
