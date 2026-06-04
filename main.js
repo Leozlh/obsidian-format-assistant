@@ -1139,10 +1139,10 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       const note = this.plugin.selectionService.captureNoteBodyAsSelection();
       if (note.input) {
         this.adoptCapturedInput(note.input);
-        this.statusText = `No selection \u2014 pulled the whole note body: ${describeInput(note.input.text)}.`;
+        this.statusText = `Pulled the whole note body: ${describeInput(note.input.text)}.`;
         this.render();
         if (showNotice) {
-          new import_obsidian4.Notice("No selection found \u2014 pulled the whole note body.");
+          new import_obsidian4.Notice(`Pulled the whole note body (${note.input.text.length} chars).`);
         }
         return;
       }

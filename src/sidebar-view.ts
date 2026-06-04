@@ -144,10 +144,10 @@ export class FormatAssistantSidebarView extends ItemView {
 			const note = this.plugin.selectionService.captureNoteBodyAsSelection();
 			if (note.input) {
 				this.adoptCapturedInput(note.input);
-				this.statusText = `No selection — pulled the whole note body: ${describeInput(note.input.text)}.`;
+				this.statusText = `Pulled the whole note body: ${describeInput(note.input.text)}.`;
 				this.render();
 				if (showNotice) {
-					new Notice("No selection found — pulled the whole note body.");
+					new Notice(`Pulled the whole note body (${note.input.text.length} chars).`);
 				}
 				return;
 			}
