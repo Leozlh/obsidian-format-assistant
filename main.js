@@ -453,32 +453,6 @@ var ConfirmModal = class extends import_obsidian.Modal {
 // src/settings.ts
 var import_obsidian2 = require("obsidian");
 
-// src/sidebar-presets.ts
-var MAX_PROMPT_PRESETS = 5;
-function createPromptPreset(content) {
-  const normalized = content.trim();
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: toPresetName(normalized),
-    content: normalized
-  };
-}
-function normalizePromptPresets(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter((item) => {
-    return Boolean(
-      item && typeof item.id === "string" && typeof item.name === "string" && typeof item.content === "string" && item.content.trim()
-    );
-  }).slice(0, MAX_PROMPT_PRESETS);
-}
-function toPresetName(content) {
-  var _a, _b;
-  const firstLine = (_b = (_a = content.split(/\r?\n/).find((line) => line.trim())) == null ? void 0 : _a.trim()) != null ? _b : "Prompt";
-  return firstLine.length > 28 ? `${firstLine.slice(0, 28)}...` : firstLine;
-}
-
 // src/settings-types.ts
 var EDITABLE_RUNTIME_MODES = [
   "obsidian-markdown",
@@ -529,7 +503,6 @@ var DEFAULT_SETTINGS = {
   autoUseSelectionOnSidebarOpen: false,
   includeCurrentFileNameInPrompt: true,
   includeFullCurrentNote: false,
-  promptPresets: [],
   apiProfiles: [],
   activeApiProfileId: ""
 };
@@ -539,7 +512,6 @@ function normalizeSettings(data) {
     ...DEFAULT_SETTINGS,
     ...raw,
     modeRuntime: normalizeModeRuntime(raw.modeRuntime),
-    promptPresets: normalizePromptPresets(raw.promptPresets),
     apiProfiles: normalizeApiProfiles(raw.apiProfiles),
     activeApiProfileId: typeof raw.activeApiProfileId === "string" ? raw.activeApiProfileId : ""
   };
@@ -1055,8 +1027,12 @@ var MODE_HINTS = {
 var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
-    this.manualInput = "";
+    // The single editable input box. It doubles as the manual-input field and as
+    // the (now editable) preview of a captured selection.
+    this.inputText = "";
     this.customInstruction = "";
+    // The captured selection anchor (with range), used so Replace / Insert can
+    // target the original editor selection. Null when the input is manual.
     this.currentContext = null;
     this.outputText = "";
     this.statusText = "";
@@ -1064,10 +1040,9 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.loading = false;
     this.completedMs = null;
     this.lastGenerationSource = null;
-    this.customInputEl = null;
-    this.manualInputEl = null;
-    this.contextPanelEl = null;
-    this.selectedPresetId = "";
+    this.inputEl = null;
+    this.instructionEl = null;
+    this.inputMetaEl = null;
     this.plugin = plugin;
     this.mode = SIDEBAR_MODES.includes(plugin.settings.sidebarDefaultMode) ? plugin.settings.sidebarDefaultMode : "obsidian-markdown";
   }
@@ -1081,11 +1056,9 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     return "sparkles";
   }
   async onOpen() {
-    this.captureCurrentSelection(false, false);
     this.render();
-    this.refreshContextStatus();
     this.registerDomEvent(this.contentEl, "pointerenter", () => {
-      this.refreshContextStatus();
+      this.renderInputMeta();
     });
     if (this.plugin.settings.autoUseSelectionOnSidebarOpen) {
       this.useCurrentSelection(false);
@@ -1093,51 +1066,36 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
   }
   async onClose() {
     this.contentEl.empty();
+    this.inputEl = null;
+    this.instructionEl = null;
+    this.inputMetaEl = null;
   }
   render() {
     const root = this.contentEl;
     root.empty();
     root.addClass("format-assistant-sidebar");
-    this.contextPanelEl = null;
     this.renderHeader(root);
     this.renderApiProfileSelector(root);
-    this.renderContextPreview(root);
+    this.renderInputSection(root);
     this.renderModeSelector(root);
-    this.renderInput(root);
+    this.renderInstruction(root);
     this.renderActions(root);
-    this.renderManualInput(root);
-    this.renderPromptPresets(root);
     this.renderStatus(root);
   }
-  createCollapsibleSection(root, title, open) {
-    const details = root.createEl("details", { cls: "format-assistant-collapsible" });
-    details.open = open;
-    details.createEl("summary", {
-      cls: "format-assistant-collapsible-summary",
-      text: title
-    });
-    return details.createDiv({ cls: "format-assistant-panel" });
-  }
+  // Lightweight: only updates the small meta line (file / source / counts), never
+  // the textarea, so it is safe to call while the user is typing.
   refreshContextStatus() {
-    var _a, _b, _c, _d, _e, _f;
-    const info = this.plugin.selectionService.getActiveMarkdownInfo();
-    const selection = (_b = (_a = info == null ? void 0 : info.editor) == null ? void 0 : _a.getSelection()) != null ? _b : "";
-    const activeName = (_f = (_e = (_c = this.currentContext) == null ? void 0 : _c.fileName) != null ? _e : (_d = info == null ? void 0 : info.file) == null ? void 0 : _d.basename) != null ? _f : "No active Markdown file";
-    if (!this.currentContext) {
-      this.statusText = selection.trim() ? `Active file: ${activeName}. Current editor has a selection.` : this.plugin.settings.includeFullCurrentNote ? `Active file: ${activeName}. Current note fallback is enabled.` : `Active file: ${activeName}. Select text or paste into Manual Input.`;
-    }
-    this.refreshContextPreview();
+    this.renderInputMeta();
   }
   focusInput() {
     var _a;
-    (_a = this.customInputEl) == null ? void 0 : _a.focus();
+    (_a = this.inputEl) == null ? void 0 : _a.focus();
   }
   useCurrentSelection(showNotice = true) {
     var _a, _b;
     const sel = this.plugin.selectionService.captureCurrentContext(false);
     if (sel.input) {
-      this.currentContext = sel.input;
-      this.errorText = "";
+      this.adoptCapturedInput(sel.input);
       this.statusText = `Captured ${describeInput(sel.input.text)}.`;
       this.render();
       if (showNotice) {
@@ -1148,43 +1106,28 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     if (this.plugin.settings.includeFullCurrentNote) {
       const note = this.plugin.selectionService.captureNoteBodyAsSelection();
       if (note.input) {
-        this.currentContext = note.input;
-        this.errorText = "";
-        this.statusText = `No selection \u2014 selected the whole note body: ${describeInput(note.input.text)}.`;
+        this.adoptCapturedInput(note.input);
+        this.statusText = `No selection \u2014 pulled the whole note body: ${describeInput(note.input.text)}.`;
         this.render();
         if (showNotice) {
-          new import_obsidian4.Notice("No selection found \u2014 selected the whole note body.");
+          new import_obsidian4.Notice("No selection found \u2014 pulled the whole note body.");
         }
         return;
       }
-      this.currentContext = null;
       this.statusText = (_a = note.error) != null ? _a : "No selection and no note body.";
       this.errorText = "";
-      this.render();
+      this.renderInputMeta();
       if (showNotice) {
         new import_obsidian4.Notice(this.statusText);
       }
       return;
     }
-    this.currentContext = null;
     this.statusText = (_b = sel.error) != null ? _b : "Select text first.";
     this.errorText = "";
-    this.render();
+    this.renderInputMeta();
     if (showNotice) {
       new import_obsidian4.Notice(this.statusText);
     }
-  }
-  // Shared capture used by Use and by Generate's auto-capture: live selection
-  // first, then (if enabled) the whole note body as a real selection.
-  captureSelectionOrNoteBody() {
-    const sel = this.plugin.selectionService.captureCurrentContext(false);
-    if (sel.input) {
-      return sel;
-    }
-    if (this.plugin.settings.includeFullCurrentNote) {
-      return this.plugin.selectionService.captureNoteBodyAsSelection();
-    }
-    return sel;
   }
   setContextFromEditor(editor, view, showNotice) {
     const context = this.plugin.selectionService.captureFromEditor(editor, view);
@@ -1195,13 +1138,30 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       }
       return;
     }
-    this.currentContext = context;
-    this.errorText = "";
+    this.adoptCapturedInput(context);
     this.statusText = `Captured ${describeInput(context.text)}.`;
     this.render();
     if (showNotice) {
       new import_obsidian4.Notice("Selection sent to Format Assistant.");
     }
+  }
+  // Fills the editable input from a captured selection and remembers the anchor.
+  adoptCapturedInput(input) {
+    this.currentContext = input;
+    this.inputText = input.text;
+    this.errorText = "";
+  }
+  // Live selection first, then (if enabled) the whole note body as a real
+  // selection. Used by Generate's auto-capture when the input box is empty.
+  captureSelectionOrNoteBody() {
+    const sel = this.plugin.selectionService.captureCurrentContext(false);
+    if (sel.input) {
+      return sel;
+    }
+    if (this.plugin.settings.includeFullCurrentNote) {
+      return this.plugin.selectionService.captureNoteBodyAsSelection();
+    }
+    return sel;
   }
   renderHeader(root) {
     const header = root.createDiv({ cls: "format-assistant-header" });
@@ -1242,46 +1202,73 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       void this.switchApiProfile(select.value);
     });
   }
-  renderContextPreview(root) {
+  // The unified editable input: a captured selection lands here and can be
+  // edited freely; typing / pasting here is the manual-input path.
+  renderInputSection(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
-    this.contextPanelEl = panel;
-    this.renderContextPreviewContent(panel);
-  }
-  renderContextPreviewContent(panel) {
     const header = panel.createDiv({ cls: "format-assistant-section-header" });
-    header.createEl("h3", { text: "Context Preview" });
-    const preview = this.getDisplayedContextPreview();
-    const fileName = preview.fileName === "No active Markdown file" ? "None" : preview.fileName;
-    const hasContent = Boolean(preview.text.trim());
-    const meta = panel.createDiv({ cls: "format-assistant-context-meta" });
-    meta.createSpan({ text: `Current file: ${fileName}` });
-    meta.createSpan({ text: `Source: ${this.getCurrentInputSourceLabel()}` });
-    if (hasContent) {
-      meta.createSpan({
-        text: `${preview.characterCount} chars / ${preview.wordCount} words / ${countLines(preview.text)} lines`
-      });
-    }
-    if (!hasContent) {
-      panel.createDiv({
-        cls: "format-assistant-empty format-assistant-context-preview",
-        text: this.plugin.settings.includeFullCurrentNote ? "No context captured. Use / Refresh grabs the selection, or the whole note body when nothing is selected." : "No context captured. Select text, then Use / Refresh."
-      });
-      this.renderSelectionControls(panel);
-      return;
-    }
-    panel.createEl("pre", {
-      cls: "format-assistant-context-preview",
-      text: preview.text
+    header.createEl("h3", { text: "Input" });
+    this.inputMetaEl = panel.createDiv({ cls: "format-assistant-context-meta" });
+    this.renderInputMeta();
+    this.inputEl = panel.createEl("textarea", {
+      cls: "format-assistant-textarea format-assistant-input",
+      attr: {
+        placeholder: 'Click "Use selection" to pull the editor selection here \u2014 or just type / paste. This text is what gets processed.'
+      }
     });
-    this.renderSelectionControls(panel);
-  }
-  refreshContextPreview() {
-    if (!this.contextPanelEl) {
+    this.inputEl.value = this.inputText;
+    this.inputEl.addEventListener("input", () => {
+      var _a, _b;
+      this.inputText = (_b = (_a = this.inputEl) == null ? void 0 : _a.value) != null ? _b : "";
+      this.renderInputMeta();
+    });
+    this.inputEl.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        void this.generate();
+      }
+    });
+    const buttons = panel.createDiv({
+      cls: "format-assistant-button-row format-assistant-button-row--compact"
+    });
+    const useButton = buttons.createEl("button", { text: "Use selection" });
+    useButton.addEventListener("click", () => this.useCurrentSelection(true));
+    const clearButton = buttons.createEl("button", { text: "Clear" });
+    clearButton.disabled = !this.inputText;
+    clearButton.addEventListener("click", () => {
+      this.inputText = "";
+      this.currentContext = null;
+      this.statusText = "Input cleared.";
+      this.errorText = "";
+      this.completedMs = null;
       this.render();
+    });
+  }
+  renderInputMeta() {
+    var _a, _b, _c, _d, _e, _f;
+    const el = this.inputMetaEl;
+    if (!el) {
       return;
     }
-    this.contextPanelEl.empty();
-    this.renderContextPreviewContent(this.contextPanelEl);
+    el.empty();
+    const info = this.plugin.selectionService.getActiveMarkdownInfo();
+    const fileName = (_d = (_c = (_a = this.currentContext) == null ? void 0 : _a.fileName) != null ? _c : (_b = info == null ? void 0 : info.file) == null ? void 0 : _b.basename) != null ? _d : "None";
+    el.createSpan({ text: `Current file: ${fileName}` });
+    el.createSpan({ text: `Source: ${this.getInputSourceLabel()}` });
+    const text = this.inputText;
+    if (text.trim()) {
+      el.createSpan({
+        text: `${text.length} chars / ${countWords(text)} words / ${countLines(text)} lines`
+      });
+      return;
+    }
+    const selection = (_f = (_e = info == null ? void 0 : info.editor) == null ? void 0 : _e.getSelection()) != null ? _f : "";
+    if (selection.trim()) {
+      el.createSpan({
+        cls: "format-assistant-muted",
+        text: `Editor selection ready: ${selection.length} chars \u2014 click "Use selection"`
+      });
+    }
   }
   renderModeSelector(root) {
     var _a;
@@ -1308,108 +1295,21 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       hint.setText((_a2 = MODE_HINTS[this.mode]) != null ? _a2 : "");
       this.statusText = `Mode: ${FORMAT_MODE_LABELS[this.mode]}.`;
       this.errorText = "";
-      this.render();
     });
   }
-  renderManualInput(root) {
-    const panel = this.createCollapsibleSection(
-      root,
-      "Manual Input",
-      Boolean(this.manualInput.trim())
-    );
-    const manualStats = panel.createDiv({
-      cls: "format-assistant-muted",
-      text: this.getManualInputStatsText()
-    });
-    this.manualInputEl = panel.createEl("textarea", {
-      cls: "format-assistant-textarea format-assistant-manual-input",
-      attr: {
-        placeholder: "Paste text to process instead of the selection. Takes priority when non-empty."
-      }
-    });
-    this.manualInputEl.value = this.manualInput;
-    const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-    const clearButton = buttons.createEl("button", { text: "Clear manual input" });
-    clearButton.disabled = !this.manualInput;
-    clearButton.addEventListener("click", () => {
-      this.manualInput = "";
-      this.statusText = "Manual input cleared.";
-      this.render();
-    });
-    this.manualInputEl.addEventListener("input", () => {
-      var _a, _b;
-      this.manualInput = (_b = (_a = this.manualInputEl) == null ? void 0 : _a.value) != null ? _b : "";
-      manualStats.setText(this.getManualInputStatsText());
-      clearButton.disabled = !this.manualInput;
-      this.refreshContextPreview();
-    });
-  }
-  renderInput(root) {
+  renderInstruction(root) {
     const panel = root.createDiv({ cls: "format-assistant-panel" });
     panel.createEl("h3", { text: "Instruction" });
-    this.customInputEl = panel.createEl("textarea", {
+    this.instructionEl = panel.createEl("textarea", {
       cls: "format-assistant-textarea",
       attr: {
         placeholder: "Add temporary instructions, for example: keep it concise, or preserve the original tone."
       }
     });
-    this.customInputEl.value = this.customInstruction;
-    this.customInputEl.addEventListener("input", () => {
+    this.instructionEl.value = this.customInstruction;
+    this.instructionEl.addEventListener("input", () => {
       var _a, _b;
-      this.customInstruction = (_b = (_a = this.customInputEl) == null ? void 0 : _a.value) != null ? _b : "";
-    });
-  }
-  renderPromptPresets(root) {
-    const panel = this.createCollapsibleSection(
-      root,
-      `Prompt Presets (${this.plugin.settings.promptPresets.length}/${MAX_PROMPT_PRESETS})`,
-      false
-    );
-    const select = panel.createEl("select", { cls: "format-assistant-select" });
-    select.createEl("option", {
-      text: this.plugin.settings.promptPresets.length ? "Select a preset" : "No presets saved",
-      value: ""
-    });
-    for (const preset of this.plugin.settings.promptPresets) {
-      const option = select.createEl("option", {
-        text: preset.name,
-        value: preset.id
-      });
-      option.title = preset.content;
-      option.selected = preset.id === this.selectedPresetId;
-    }
-    select.addEventListener("change", () => {
-      this.selectedPresetId = select.value;
-    });
-    const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-    const addButton = buttons.createEl("button", { text: "+ Save" });
-    addButton.addEventListener("click", () => {
-      void this.addCurrentInputAsPreset();
-    });
-    const selectButton = buttons.createEl("button", { text: "Use" });
-    selectButton.disabled = !this.plugin.settings.promptPresets.length;
-    selectButton.addEventListener("click", () => this.applySelectedPreset());
-    const removeButton = buttons.createEl("button", { text: "Delete" });
-    removeButton.disabled = !this.plugin.settings.promptPresets.length;
-    removeButton.addEventListener("click", () => {
-      void this.removeSelectedPreset();
-    });
-  }
-  renderSelectionControls(parent) {
-    const panel = parent.createDiv({ cls: "format-assistant-selection-controls" });
-    panel.createEl("h3", { text: "Selection" });
-    const buttons = panel.createDiv({ cls: "format-assistant-button-row format-assistant-button-row--compact" });
-    const useButton = buttons.createEl("button", { text: "Use" });
-    useButton.addEventListener("click", () => this.useCurrentSelection(true));
-    const refreshButton = buttons.createEl("button", { text: "Refresh" });
-    refreshButton.addEventListener("click", () => this.useCurrentSelection(true));
-    const clearButton = buttons.createEl("button", { text: "Clear" });
-    clearButton.addEventListener("click", () => {
-      this.currentContext = null;
-      this.statusText = "Context cleared.";
-      this.errorText = "";
-      this.completedMs = null;
-      this.render();
+      this.customInstruction = (_b = (_a = this.instructionEl) == null ? void 0 : _a.value) != null ? _b : "";
     });
   }
   renderActions(root) {
@@ -1469,6 +1369,12 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.completedMs = null;
       this.render();
     });
+    if (canCopy && !canWriteSelection) {
+      resultPanel.createDiv({
+        cls: "format-assistant-muted format-assistant-hint",
+        text: 'Replace / Insert need an unedited captured selection. Use "Use selection" and generate without editing the input to enable them.'
+      });
+    }
   }
   renderResultOutput(parent) {
     if (this.completedMs !== null && this.lastGenerationSource) {
@@ -1495,7 +1401,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     if (!this.outputText) {
       parent.createDiv({
         cls: "format-assistant-empty format-assistant-output format-assistant-output-state",
-        text: this.plugin.settings.includeFullCurrentNote ? "No result yet. Click Generate to process manual input, captured selection, or current note fallback." : "No result yet. Click Generate to process manual input or captured selection."
+        text: this.plugin.settings.includeFullCurrentNote ? "No result yet. Click Generate to process the input, a captured selection, or the current note fallback." : "No result yet. Click Generate to process the input or a captured selection."
       });
       return;
     }
@@ -1518,14 +1424,14 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     const panel = root.createDiv({ cls: "format-assistant-status" });
     panel.createDiv({
       cls: "format-assistant-warning",
-      text: "Current note fallback is on. With no selection, Generate may send the active note body only. The vault is never scanned."
+      text: "Current note fallback is on. With an empty input and no selection, Generate may send the active note body. The vault is never scanned."
     });
   }
   async generate() {
     const input = this.resolveInputForGenerate();
     if (!input) {
-      this.setError("No input text. Select text in an editor or paste text into Manual Input.");
-      new import_obsidian4.Notice("No input text. Select text in an editor or paste text into Manual Input.");
+      this.setError("No input text. Type/paste into the Input box, or select text in an editor and click Use selection.");
+      new import_obsidian4.Notice("No input text. Type/paste into the Input box, or select text first.");
       return;
     }
     const validationError = this.plugin.validateApiSettings();
@@ -1643,70 +1549,41 @@ ${this.outputText}`,
     }
     return result.state;
   }
-  captureCurrentSelection(showNotice, allowFallback = this.plugin.settings.includeFullCurrentNote) {
-    var _a;
-    const result = this.plugin.selectionService.captureCurrentContext(allowFallback);
-    if (!result.input) {
-      this.currentContext = null;
-      const message = (_a = result.error) != null ? _a : "Select text first or open a note with body text.";
-      this.statusText = message;
-      this.errorText = "";
-      this.render();
-      if (showNotice) {
-        new import_obsidian4.Notice(message);
-      }
-      return false;
-    }
-    this.currentContext = result.input;
-    this.statusText = result.input.source === "note" ? `Using current note fallback: ${describeInput(result.input.text)}.` : `Captured ${describeInput(result.input.text)}.`;
-    this.errorText = "";
-    this.render();
-    return true;
-  }
   resolveInputForGenerate() {
-    var _a, _b, _c, _d, _e, _f;
-    const manualText = this.manualInput.trim();
-    if (manualText) {
-      return {
-        text: manualText,
-        source: "manual",
-        currentFileName: (_c = (_b = (_a = this.plugin.selectionService.getActiveMarkdownInfo()) == null ? void 0 : _a.file) == null ? void 0 : _b.basename) != null ? _c : void 0
-      };
-    }
-    if (!((_d = this.currentContext) == null ? void 0 : _d.text.trim())) {
+    var _a, _b, _c, _d, _e;
+    let text = this.inputText.trim();
+    if (!text) {
       const result = this.captureSelectionOrNoteBody();
       if (result.input) {
-        this.currentContext = result.input;
+        this.adoptCapturedInput(result.input);
+        text = result.input.text.trim();
       }
     }
-    if ((_e = this.currentContext) == null ? void 0 : _e.text.trim()) {
-      return {
-        text: this.currentContext.text.trim(),
-        source: this.currentContext.source,
-        currentFileName: (_f = this.currentContext.fileName) != null ? _f : void 0
-      };
+    if (!text) {
+      return null;
     }
-    return null;
+    const activeFileName = (_c = (_b = (_a = this.plugin.selectionService.getActiveMarkdownInfo()) == null ? void 0 : _a.file) == null ? void 0 : _b.basename) != null ? _c : void 0;
+    const isSelection = Boolean(
+      this.currentContext && this.inputText.trim() === this.currentContext.text.trim()
+    );
+    return {
+      text,
+      source: isSelection ? this.currentContext.source : "manual",
+      currentFileName: isSelection ? (_e = (_d = this.currentContext) == null ? void 0 : _d.fileName) != null ? _e : activeFileName : activeFileName
+    };
   }
-  getCurrentInputSourceLabel() {
-    var _a, _b;
-    if (this.manualInput.trim()) {
-      return "Manual input";
+  getInputSourceLabel() {
+    if (!this.inputText.trim()) {
+      return "None";
     }
-    if (((_a = this.currentContext) == null ? void 0 : _a.source) === "selection" && this.currentContext.text.trim()) {
-      return "Captured selection";
+    if (this.currentContext && this.inputText.trim() === this.currentContext.text.trim()) {
+      return this.currentContext.source === "note" ? "Current note" : "Captured selection";
     }
-    if (((_b = this.currentContext) == null ? void 0 : _b.source) === "note" && this.currentContext.text.trim()) {
-      return "Current note fallback";
-    }
-    if (this.plugin.selectionService.getActiveSelectionPreview().text.trim()) {
-      return "Selection (uncaptured \u2014 click Use)";
-    }
-    return "None";
+    return "Manual / edited";
   }
   formatInputSource(source) {
     if (source === "manual") {
-      return "Manual input";
+      return "Manual / edited input";
     }
     if (source === "note") {
       return "Current note fallback";
@@ -1717,16 +1594,6 @@ ${this.outputText}`,
     this.errorText = message;
     this.statusText = "";
     this.render();
-  }
-  getDisplayedContextPreview() {
-    var _a;
-    if ((_a = this.currentContext) == null ? void 0 : _a.text.trim()) {
-      return this.currentContext;
-    }
-    return this.plugin.selectionService.getActiveSelectionPreview();
-  }
-  getManualInputStatsText() {
-    return `Manual input: ${this.manualInput.length} chars / ${countWords(this.manualInput)} words / ${countLines(this.manualInput)} lines`;
   }
   openSettings() {
     var _a, _b;
@@ -1749,65 +1616,6 @@ ${this.outputText}`,
       return;
     }
     await this.plugin.applyApiProfile(profile);
-  }
-  async addCurrentInputAsPreset() {
-    const content = this.customInstruction.trim();
-    if (!content) {
-      this.setError("Enter an instruction before saving a preset.");
-      new import_obsidian4.Notice("Enter an instruction before saving a preset.");
-      return;
-    }
-    if (this.plugin.settings.promptPresets.length >= MAX_PROMPT_PRESETS) {
-      this.setError(`Prompt presets are limited to ${MAX_PROMPT_PRESETS}.`);
-      new import_obsidian4.Notice(`Prompt presets are limited to ${MAX_PROMPT_PRESETS}.`);
-      return;
-    }
-    const preset = createPromptPreset(content);
-    this.plugin.settings.promptPresets = [
-      ...this.plugin.settings.promptPresets,
-      preset
-    ];
-    this.selectedPresetId = preset.id;
-    await this.plugin.saveSettings();
-    this.statusText = "Prompt preset saved.";
-    this.errorText = "";
-    this.render();
-    new import_obsidian4.Notice("Prompt preset saved.");
-  }
-  applySelectedPreset() {
-    const preset = this.getSelectedPreset();
-    if (!preset) {
-      this.setError("Select a prompt preset first.");
-      new import_obsidian4.Notice("Select a prompt preset first.");
-      return;
-    }
-    this.customInstruction = preset.content;
-    this.statusText = "Prompt preset loaded into input.";
-    this.errorText = "";
-    this.render();
-    this.focusInput();
-  }
-  async removeSelectedPreset() {
-    const preset = this.getSelectedPreset();
-    if (!preset) {
-      this.setError("Select a prompt preset first.");
-      new import_obsidian4.Notice("Select a prompt preset first.");
-      return;
-    }
-    this.plugin.settings.promptPresets = this.plugin.settings.promptPresets.filter(
-      (item) => item.id !== preset.id
-    );
-    this.selectedPresetId = "";
-    await this.plugin.saveSettings();
-    this.statusText = "Prompt preset removed.";
-    this.errorText = "";
-    this.render();
-    new import_obsidian4.Notice("Prompt preset removed.");
-  }
-  getSelectedPreset() {
-    return this.plugin.settings.promptPresets.find(
-      (preset) => preset.id === this.selectedPresetId
-    );
   }
 };
 

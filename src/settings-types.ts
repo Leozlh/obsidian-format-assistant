@@ -3,7 +3,6 @@ import {
 	type ApiProfile
 } from "./api-profiles";
 import { BASE_SYSTEM_PROMPT, type FormatMode } from "./prompts";
-import { normalizePromptPresets, type PromptPreset } from "./sidebar-presets";
 
 export type ProviderType = "openai-compatible";
 
@@ -44,7 +43,6 @@ export interface FormatAssistantSettings {
 	autoUseSelectionOnSidebarOpen: boolean;
 	includeCurrentFileNameInPrompt: boolean;
 	includeFullCurrentNote: boolean;
-	promptPresets: PromptPreset[];
 	apiProfiles: ApiProfile[];
 	activeApiProfileId: string;
 }
@@ -93,7 +91,6 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	autoUseSelectionOnSidebarOpen: false,
 	includeCurrentFileNameInPrompt: true,
 	includeFullCurrentNote: false,
-	promptPresets: [],
 	apiProfiles: [],
 	activeApiProfileId: ""
 };
@@ -107,7 +104,6 @@ export function normalizeSettings(data: unknown): FormatAssistantSettings {
 		...DEFAULT_SETTINGS,
 		...raw,
 		modeRuntime: normalizeModeRuntime(raw.modeRuntime),
-		promptPresets: normalizePromptPresets(raw.promptPresets),
 		apiProfiles: normalizeApiProfiles(raw.apiProfiles),
 		activeApiProfileId: typeof raw.activeApiProfileId === "string"
 			? raw.activeApiProfileId
