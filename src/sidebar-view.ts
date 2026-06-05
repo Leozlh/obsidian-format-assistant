@@ -23,13 +23,15 @@ export const FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 const SIDEBAR_MODES: FormatMode[] = [
 	"obsidian-markdown",
 	"note-organize",
-	"diary-organize"
+	"diary-organize",
+	"exam-quiz"
 ];
 
 const MODE_HINTS: Partial<Record<FormatMode, string>> = {
 	"obsidian-markdown": "Light cleanup: tidy layout only, no restructuring.",
 	"note-organize": "Structured: extract concepts / formulas / pitfalls, may add headings.",
-	"diary-organize": "Diary: keep the original tone; preserve the timeline; pull out real to-dos."
+	"diary-organize": "Diary: keep the original tone; preserve the timeline; pull out real to-dos.",
+	"exam-quiz": "Exam Quiz: extract key points + a few self-test questions with foldable answers. Won't replace your text — use Copy / Insert below."
 };
 
 interface GenerateInput {
@@ -56,6 +58,9 @@ export class FormatAssistantSidebarView extends ItemView {
 	private loading = false;
 	private completedMs: number | null = null;
 	private lastGenerationSource: InputSource | null = null;
+	// The mode that produced the current result (so Replace can be gated for
+	// generative modes like exam-quiz regardless of later mode switches).
+	private lastGenerationMode: FormatMode | null = null;
 	private inputEl: HTMLTextAreaElement | null = null;
 	private instructionEl: HTMLTextAreaElement | null = null;
 	private inputMetaEl: HTMLElement | null = null;
@@ -432,6 +437,10 @@ export class FormatAssistantSidebarView extends ItemView {
 		resultPanel.createEl("h3", { text: "Result" });
 		const canCopy = Boolean(this.outputText) && !this.loading && !this.errorText;
 		const canWriteSelection = canCopy && this.lastGenerationSource === "selection";
+		// exam-quiz output is new content (points + questions); replacing the source
+		// chapter with it would be destructive, so Replace is gated off for it.
+		const isQuizResult = this.lastGenerationMode === "exam-quiz";
+		const canReplace = canWriteSelection && !isQuizResult;
 		const canClearOutput = Boolean(this.outputText) && !this.loading;
 
 		this.renderResultOutput(resultPanel);
@@ -452,7 +461,7 @@ export class FormatAssistantSidebarView extends ItemView {
 			cls: "format-assistant-result-secondary"
 		});
 		replaceButton.setAttribute("aria-label", "Replace selection");
-		replaceButton.disabled = !canWriteSelection;
+		replaceButton.disabled = !canReplace;
 		replaceButton.addEventListener("click", () => {
 			this.confirmReplace();
 		});
@@ -490,7 +499,12 @@ export class FormatAssistantSidebarView extends ItemView {
 		});
 
 		// Explain why Replace / Insert are unavailable, when applicable.
-		if (canCopy && !canWriteSelection) {
+		if (canCopy && isQuizResult) {
+			resultPanel.createDiv({
+				cls: "format-assistant-muted format-assistant-hint",
+				text: "Exam Quiz output won't replace your text. Use Copy, Insert below, or → Input."
+			});
+		} else if (canCopy && !canWriteSelection) {
 			resultPanel.createDiv({
 				cls: "format-assistant-muted format-assistant-hint",
 				text: "Replace / Insert need an unedited captured selection. Use \"Use selection\" and generate without editing the input to enable them."
@@ -594,6 +608,7 @@ export class FormatAssistantSidebarView extends ItemView {
 		this.statusText = "Generating...";
 		this.completedMs = null;
 		this.lastGenerationSource = input.source;
+		this.lastGenerationMode = this.mode;
 		this.render();
 
 		const startedAt = performance.now();
@@ -655,6 +670,11 @@ export class FormatAssistantSidebarView extends ItemView {
 	private confirmReplace(): void {
 		if (!this.outputText) {
 			new Notice("No result to replace with.");
+			return;
+		}
+
+		if (this.lastGenerationMode === "exam-quiz") {
+			new Notice("Exam Quiz output won't replace your text — use Copy or Insert below.");
 			return;
 		}
 

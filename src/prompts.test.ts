@@ -30,14 +30,26 @@ describe("buildModePrompt", () => {
 		expect(prompt).toContain("- [ ] 原子做完");
 		expect(prompt).not.toContain("## 待办");
 	});
+
+	it("exam-quiz extracts points and emits foldable self-test answers", () => {
+		const prompt = buildModePrompt("exam-quiz");
+		expect(prompt).toContain("考点自测模式");
+		expect(prompt).toContain("## 考点清单");
+		expect(prompt).toContain("## 自测题");
+		// foldable answer callout
+		expect(prompt).toContain("[!success]-");
+		// anti-hallucination guard
+		expect(prompt).toContain("绝不编造");
+	});
 });
 
 describe("FORMAT_MODES", () => {
-	it("only contains the three core modes plus custom", () => {
+	it("contains the core modes, exam-quiz, plus custom", () => {
 		expect(FORMAT_MODES).toEqual([
 			"obsidian-markdown",
 			"note-organize",
 			"diary-organize",
+			"exam-quiz",
 			"custom"
 		]);
 	});
@@ -57,6 +69,13 @@ describe("resolveModeRuntime", () => {
 		expect(resolveModeRuntime("diary-organize", settings)).toEqual({
 			maxTokens: 900,
 			timeoutSeconds: 30
+		});
+	});
+
+	it("gives exam-quiz a larger budget for points + questions", () => {
+		expect(resolveModeRuntime("exam-quiz", settings)).toEqual({
+			maxTokens: 2000,
+			timeoutSeconds: 60
 		});
 	});
 

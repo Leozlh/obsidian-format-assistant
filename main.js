@@ -173,11 +173,43 @@ var DIARY_ORGANIZE_PROMPT = `\u4F60\u6B63\u5728\u6267\u884C\u201C\u65E5\u8BB0\u6
   - [ ] \u590D\u4E60\u7B2C\u4E09\u7AE0\uFF08\u5B9E\u9645\uFF1A\u6CA1\u505A\uFF09
 - \u4E0B\u5348\uFF1A
   - [ ] \u5199\u5927\u7269\u62A5\u544A`;
+var EXAM_QUIZ_PROMPT = `\u4F60\u6B63\u5728\u6267\u884C\u201C\u8003\u70B9\u81EA\u6D4B\u6A21\u5F0F\u201D\u3002
+
+\u76EE\u6807\uFF1A\u57FA\u4E8E\u8F93\u5165\u7684\u7AE0\u8282 / \u7B14\u8BB0\u5185\u5BB9\uFF0C\u63D0\u70BC\u8003\u70B9\u5E76\u51FA\u51E0\u9053\u81EA\u6D4B\u9898\uFF0C\u4F9B\u8003\u524D\u590D\u4E60\u3002
+
+\u4E25\u683C\u8981\u6C42\uFF1A
+1. \u53EA\u80FD\u4F7F\u7528\u8F93\u5165\u6587\u672C\u4E2D\u51FA\u73B0\u7684\u5185\u5BB9\u3002\u9898\u76EE\u548C\u7B54\u6848\u90FD\u5FC5\u987B\u80FD\u5728\u539F\u6587\u4E2D\u627E\u5230\u4F9D\u636E\u3002
+2. \u7EDD\u4E0D\u7F16\u9020\u539F\u6587\u6CA1\u6709\u7684\u4E8B\u5B9E\u3001\u6570\u5B57\u3001\u5B9A\u4E49\u3001\u7ED3\u8BBA\u3002\u539F\u6587\u672A\u6D89\u53CA\u7684\u5185\u5BB9\uFF0C\u4E0D\u8981\u51FA\u9898\u3002
+3. \u4E0D\u8981\u6DFB\u52A0 frontmatter\uFF0C\u4E0D\u8981\u89E3\u91CA\u5904\u7406\u8FC7\u7A0B\uFF0C\u53EA\u8F93\u51FA\u6700\u7EC8 Markdown\u3002
+
+\u8F93\u51FA\u7ED3\u6784\uFF1A
+## \u8003\u70B9\u6E05\u5355
+- \u7528 3-8 \u6761\u5217\u51FA\u672C\u6BB5\u5173\u952E\u8003\u70B9\uFF08\u6982\u5FF5 / \u516C\u5F0F / \u9002\u7528\u6761\u4EF6 / \u6613\u9519\u70B9\uFF09\u3002
+
+## \u81EA\u6D4B\u9898
+- \u51FA 3-5 \u9053\u9898\uFF0C\u8986\u76D6\u4E0A\u9762\u7684\u8003\u70B9\uFF0C\u96BE\u5EA6\u7531\u6D45\u5165\u6DF1\u3002
+- \u9898\u578B\u53EF\u6DF7\u5408\uFF1A\u6982\u5FF5\u7B80\u7B54\u3001\u516C\u5F0F\u9002\u7528\u6761\u4EF6\u3001\u63A8\u5BFC\u5173\u952E\u6B65\u9AA4\u3001\u5224\u65AD\u6613\u9519\u70B9\u3002
+- \u6BCF\u9053\u9898\u7D27\u8DDF\u4E00\u4E2A\u201C\u9ED8\u8BA4\u6298\u53E0\u201D\u7684\u7B54\u6848 callout\uFF0C\u683C\u5F0F\u4E25\u683C\u5982\u4E0B\uFF1A
+
+**1.** \u5728\u6B64\u5199\u9898\u5E72\u3002
+> [!success]- \u7B54\u6848 1
+> \u5728\u6B64\u5199\u7B54\u6848\uFF0C\u5E76\u7B80\u8FF0\u4F9D\u636E\uFF08\u6765\u81EA\u539F\u6587\u7684\u54EA\u4E00\u70B9\uFF09\u3002
+
+**2.** \u5728\u6B64\u5199\u9898\u5E72\u3002
+> [!success]- \u7B54\u6848 2
+> \u2026\u2026
+
+\u6CE8\u610F\uFF1A
+- \u7B54\u6848 callout \u884C\u5FC5\u987B\u4EE5 \u201C> \u201D \u5F00\u5934\uFF0C\u7C7B\u578B\u7528 [!success]\uFF0C\u5E76\u5728\u7C7B\u578B\u540E\u7D27\u8DDF \u201C-\u201D \u8868\u793A\u9ED8\u8BA4\u6298\u53E0\u3002
+- \u82E5\u67D0\u8003\u70B9\u5728\u539F\u6587\u4E2D\u53EA\u6709\u7ED3\u8BBA\u6CA1\u6709\u63A8\u5BFC\uFF0C\u7B54\u6848\u5C31\u53EA\u7ED9\u7ED3\u8BBA\uFF0C\u4E0D\u8981\u81EA\u884C\u8865\u5168\u63A8\u5BFC\u3002
+- \u8F93\u5165\u5F88\u77ED\u65F6\u5C11\u51FA\u51E0\u9053\u9898\uFF0C\u4E0D\u8981\u4E3A\u51D1\u6570\u800C\u7F16\u9020\u3002`;
 var MODE_RUNTIME = {
   // note-organize produces longer structured output -> larger budget, longer wait.
   "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
   // diary output is usually shorter and faster.
-  "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+  "diary-organize": { maxTokens: 900, timeoutSeconds: 30 },
+  // exam-quiz emits points + several questions with answers -> larger budget.
+  "exam-quiz": { maxTokens: 2e3, timeoutSeconds: 60 }
 };
 function resolveModeRuntime(mode, settings) {
   var _a, _b, _c, _d, _e;
@@ -191,6 +223,7 @@ var FORMAT_MODE_LABELS = {
   "obsidian-markdown": "Obsidian Markdown",
   "note-organize": "Note Organize",
   "diary-organize": "Diary Organize",
+  "exam-quiz": "Exam Quiz",
   custom: "Custom Instruction"
 };
 var FORMAT_TASKS = [
@@ -242,6 +275,9 @@ function buildModePrompt(mode) {
   }
   if (mode === "diary-organize") {
     return DIARY_ORGANIZE_PROMPT;
+  }
+  if (mode === "exam-quiz") {
+    return EXAM_QUIZ_PROMPT;
   }
   return "\u4F60\u6B63\u5728\u6267\u884C\u201C\u81EA\u5B9A\u4E49\u6307\u4EE4\u6A21\u5F0F\u201D\u3002\u8BF7\u6309\u7528\u6237\u4E34\u65F6 instruction \u5904\u7406\u8F93\u5165\u6587\u672C\uFF0C\u4F46\u4ECD\u5FC5\u987B\u9075\u5B88 system message \u4E2D\u7684\u901A\u7528\u89C4\u5219\u3002";
 }
@@ -478,12 +514,14 @@ var import_obsidian2 = require("obsidian");
 var EDITABLE_RUNTIME_MODES = [
   "obsidian-markdown",
   "note-organize",
-  "diary-organize"
+  "diary-organize",
+  "exam-quiz"
 ];
 var DEFAULT_MODE_RUNTIME = {
   "obsidian-markdown": { maxTokens: 1200, timeoutSeconds: 30 },
   "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
-  "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+  "diary-organize": { maxTokens: 900, timeoutSeconds: 30 },
+  "exam-quiz": { maxTokens: 2e3, timeoutSeconds: 60 }
 };
 function positiveInt(value, fallback) {
   const n = Number(value);
@@ -549,7 +587,8 @@ var DEFAULT_SETTINGS = {
   modeRuntime: {
     "obsidian-markdown": { maxTokens: 1200, timeoutSeconds: 30 },
     "note-organize": { maxTokens: 2e3, timeoutSeconds: 60 },
-    "diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+    "diary-organize": { maxTokens: 900, timeoutSeconds: 30 },
+    "exam-quiz": { maxTokens: 2e3, timeoutSeconds: 60 }
   },
   sidebarDefaultMode: "obsidian-markdown",
   autoUseSelectionOnSidebarOpen: false,
@@ -1076,12 +1115,14 @@ var FORMAT_ASSISTANT_VIEW_TYPE = "format-assistant-sidebar";
 var SIDEBAR_MODES = [
   "obsidian-markdown",
   "note-organize",
-  "diary-organize"
+  "diary-organize",
+  "exam-quiz"
 ];
 var MODE_HINTS = {
   "obsidian-markdown": "Light cleanup: tidy layout only, no restructuring.",
   "note-organize": "Structured: extract concepts / formulas / pitfalls, may add headings.",
-  "diary-organize": "Diary: keep the original tone; preserve the timeline; pull out real to-dos."
+  "diary-organize": "Diary: keep the original tone; preserve the timeline; pull out real to-dos.",
+  "exam-quiz": "Exam Quiz: extract key points + a few self-test questions with foldable answers. Won't replace your text \u2014 use Copy / Insert below."
 };
 var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
   constructor(leaf, plugin) {
@@ -1099,6 +1140,9 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.loading = false;
     this.completedMs = null;
     this.lastGenerationSource = null;
+    // The mode that produced the current result (so Replace can be gated for
+    // generative modes like exam-quiz regardless of later mode switches).
+    this.lastGenerationMode = null;
     this.inputEl = null;
     this.instructionEl = null;
     this.inputMetaEl = null;
@@ -1416,6 +1460,8 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     resultPanel.createEl("h3", { text: "Result" });
     const canCopy = Boolean(this.outputText) && !this.loading && !this.errorText;
     const canWriteSelection = canCopy && this.lastGenerationSource === "selection";
+    const isQuizResult = this.lastGenerationMode === "exam-quiz";
+    const canReplace = canWriteSelection && !isQuizResult;
     const canClearOutput = Boolean(this.outputText) && !this.loading;
     this.renderResultOutput(resultPanel);
     const resultButtons = resultPanel.createDiv({ cls: "format-assistant-result-buttons" });
@@ -1432,7 +1478,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       cls: "format-assistant-result-secondary"
     });
     replaceButton.setAttribute("aria-label", "Replace selection");
-    replaceButton.disabled = !canWriteSelection;
+    replaceButton.disabled = !canReplace;
     replaceButton.addEventListener("click", () => {
       this.confirmReplace();
     });
@@ -1465,7 +1511,12 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
       this.completedMs = null;
       this.render();
     });
-    if (canCopy && !canWriteSelection) {
+    if (canCopy && isQuizResult) {
+      resultPanel.createDiv({
+        cls: "format-assistant-muted format-assistant-hint",
+        text: "Exam Quiz output won't replace your text. Use Copy, Insert below, or \u2192 Input."
+      });
+    } else if (canCopy && !canWriteSelection) {
       resultPanel.createDiv({
         cls: "format-assistant-muted format-assistant-hint",
         text: 'Replace / Insert need an unedited captured selection. Use "Use selection" and generate without editing the input to enable them.'
@@ -1552,6 +1603,7 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
     this.statusText = "Generating...";
     this.completedMs = null;
     this.lastGenerationSource = input.source;
+    this.lastGenerationMode = this.mode;
     this.render();
     const startedAt = performance.now();
     try {
@@ -1604,6 +1656,10 @@ var FormatAssistantSidebarView = class extends import_obsidian4.ItemView {
   confirmReplace() {
     if (!this.outputText) {
       new import_obsidian4.Notice("No result to replace with.");
+      return;
+    }
+    if (this.lastGenerationMode === "exam-quiz") {
+      new import_obsidian4.Notice("Exam Quiz output won't replace your text \u2014 use Copy or Insert below.");
       return;
     }
     if (this.lastGenerationSource !== "selection") {

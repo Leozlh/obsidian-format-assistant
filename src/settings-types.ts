@@ -17,13 +17,15 @@ export interface ModeLimit {
 export const EDITABLE_RUNTIME_MODES: FormatMode[] = [
 	"obsidian-markdown",
 	"note-organize",
-	"diary-organize"
+	"diary-organize",
+	"exam-quiz"
 ];
 
 const DEFAULT_MODE_RUNTIME: Record<string, ModeLimit> = {
 	"obsidian-markdown": { maxTokens: 1200, timeoutSeconds: 30 },
 	"note-organize": { maxTokens: 2000, timeoutSeconds: 60 },
-	"diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+	"diary-organize": { maxTokens: 900, timeoutSeconds: 30 },
+	"exam-quiz": { maxTokens: 2000, timeoutSeconds: 60 }
 };
 
 export interface FormatAssistantSettings {
@@ -127,7 +129,8 @@ export const DEFAULT_SETTINGS: FormatAssistantSettings = {
 	modeRuntime: {
 		"obsidian-markdown": { maxTokens: 1200, timeoutSeconds: 30 },
 		"note-organize": { maxTokens: 2000, timeoutSeconds: 60 },
-		"diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
+		"diary-organize": { maxTokens: 900, timeoutSeconds: 30 },
+		"exam-quiz": { maxTokens: 2000, timeoutSeconds: 60 }
 	},
 	sidebarDefaultMode: "obsidian-markdown",
 	autoUseSelectionOnSidebarOpen: false,
