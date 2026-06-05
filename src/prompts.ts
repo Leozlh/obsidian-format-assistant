@@ -2,7 +2,6 @@ export type FormatMode =
 	| "obsidian-markdown"
 	| "note-organize"
 	| "diary-organize"
-	| "exam-quiz"
 	| "custom";
 
 export interface FormatTask {
@@ -111,37 +110,6 @@ export const DIARY_ORGANIZE_PROMPT = `你正在执行“日记整理模式”。
 - 下午：
   - [ ] 写大物报告`;
 
-export const EXAM_QUIZ_PROMPT = `你正在执行“考点自测模式”。
-
-目标：基于输入的章节 / 笔记内容，提炼考点并出几道自测题，供考前复习。
-
-严格要求：
-1. 只能使用输入文本中出现的内容。题目和答案都必须能在原文中找到依据。
-2. 绝不编造原文没有的事实、数字、定义、结论。原文未涉及的内容，不要出题。
-3. 不要添加 frontmatter，不要解释处理过程，只输出最终 Markdown。
-
-输出结构：
-## 考点清单
-- 用 3-8 条列出本段关键考点（概念 / 公式 / 适用条件 / 易错点）。
-
-## 自测题
-- 出 3-5 道题，覆盖上面的考点，难度由浅入深。
-- 题型可混合：概念简答、公式适用条件、推导关键步骤、判断易错点。
-- 每道题紧跟一个“默认折叠”的答案 callout，格式严格如下：
-
-**1.** 在此写题干。
-> [!success]- 答案 1
-> 在此写答案，并简述依据（来自原文的哪一点）。
-
-**2.** 在此写题干。
-> [!success]- 答案 2
-> ……
-
-注意：
-- 答案 callout 行必须以 “> ” 开头，类型用 [!success]，并在类型后紧跟 “-” 表示默认折叠。
-- 若某考点在原文中只有结论没有推导，答案就只给结论，不要自行补全推导。
-- 输入很短时少出几道题，不要为凑数而编造。`;
-
 export interface ModeRuntime {
 	maxTokens?: number;
 	timeoutSeconds?: number;
@@ -153,9 +121,7 @@ export const MODE_RUNTIME: Partial<Record<FormatMode, ModeRuntime>> = {
 	// note-organize produces longer structured output -> larger budget, longer wait.
 	"note-organize": { maxTokens: 2000, timeoutSeconds: 60 },
 	// diary output is usually shorter and faster.
-	"diary-organize": { maxTokens: 900, timeoutSeconds: 30 },
-	// exam-quiz emits points + several questions with answers -> larger budget.
-	"exam-quiz": { maxTokens: 2000, timeoutSeconds: 60 }
+	"diary-organize": { maxTokens: 900, timeoutSeconds: 30 }
 };
 
 export function resolveModeRuntime(
@@ -178,7 +144,6 @@ export const FORMAT_MODES: FormatMode[] = [
 	"obsidian-markdown",
 	"note-organize",
 	"diary-organize",
-	"exam-quiz",
 	"custom"
 ];
 
@@ -186,7 +151,6 @@ export const FORMAT_MODE_LABELS: Record<FormatMode, string> = {
 	"obsidian-markdown": "Obsidian Markdown",
 	"note-organize": "Note Organize",
 	"diary-organize": "Diary Organize",
-	"exam-quiz": "Exam Quiz",
 	custom: "Custom Instruction"
 };
 
@@ -248,10 +212,6 @@ export function buildModePrompt(mode: FormatMode): string {
 
 	if (mode === "diary-organize") {
 		return DIARY_ORGANIZE_PROMPT;
-	}
-
-	if (mode === "exam-quiz") {
-		return EXAM_QUIZ_PROMPT;
 	}
 
 	return "你正在执行“自定义指令模式”。请按用户临时 instruction 处理输入文本，但仍必须遵守 system message 中的通用规则。";
